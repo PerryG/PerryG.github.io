@@ -249,7 +249,9 @@ CanvasState.prototype.getMouse = function(e) {
 }
 
 function init() {
-    var s = new CanvasState(document.getElementById('myCanvas'));
+    var canvas = document.getElementById('myCanvas');
+    canvas.onselectstart = function () { return false; }
+    var s = new CanvasState(canvas);
     $('#addMean').click(function() { s.addMean(); });
     $('#reset').click(function() { s.reset(); });
 }
