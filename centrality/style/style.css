@@ -2,3 +2,10 @@
     border-style: solid;
     border-width: 5px;
 }
+
+.sidebar {
+  float: left;
+  font-family: Helvetica, Arial, sans-serif;
+  width: 220px;
+  padding: 70px 5px;
+}

@@ -17,10 +17,11 @@ function sub(p1, p0) {
 }
 
 // c is location of center, r is radius, fill is color, default black
-function Circle(c, r, fill) {
+function Circle(c, r, fill, label) {
     this.c = c;
     this.r = r;
     this.fill = fill || '#000000';
+    this.label = label;
 }
 
 Circle.prototype.draw = function(ctx) {
@@ -28,6 +29,8 @@ Circle.prototype.draw = function(ctx) {
     ctx.fillStyle = this.fill;
     ctx.arc(this.c.x, this.c.y, this.r, 0, 2*Math.PI);
     ctx.fill();
+    ctx.font="20px Arial";
+    ctx.fillText(this.label, this.c.x, this.c.y+this.r+20)
     ctx.stroke();
 }
 
@@ -103,15 +106,7 @@ function CanvasState(canvas) {
     this.htmlLeft = html.offsetLeft;
 
     // OK, bullshit is out of the way. Back to normal stolen (stolen with understanding)
-
-    this.refresh = true;
-    this.selection = null;
-    this.data = [];
-    this.means = [];
-    this.medians = [];
-    this.allCircles = [];
-    this.dragoffsetx = 0;
-    this.dragoffsety = 0;
+    this.reset();
 
     // Why the fuck is 'this' so dumb in javascript...
     var state = this;
@@ -146,14 +141,15 @@ function CanvasState(canvas) {
 
     canvas.addEventListener('dblclick', function(e) {
         var mouse = state.getMouse(e);
-        var newData = state.addCircle(mouse, 'data');
+        var newData = state.addData(mouse);
     }, true);
 
     this.interval = 30;
     setInterval(function() {state.draw();}, state.interval);
 }
 
-CanvasState.prototype.addCircle = function(p, type) {
+CanvasState.prototype.addCircle = function(p, type, label) {
+    var label = label || '';
     var type = type || 'data';
     var style = null;
     switch (type) {
@@ -167,7 +163,7 @@ CanvasState.prototype.addCircle = function(p, type) {
         default:
             style = null;
     }
-    var newCircle = new Circle(p, 10, style);
+    var newCircle = new Circle(p, 10, style, '');
     this.refresh = true;
     if (type == 'mean')
         this.means.push(newCircle);
@@ -179,6 +175,26 @@ CanvasState.prototype.addCircle = function(p, type) {
     return newCircle;
 }
 
+CanvasState.prototype.addData = function(p) {
+    return this.addCircle(p, 'data', '');
+}
+
+CanvasState.prototype.addMean = function() {
+    var x = 0, y = 0;
+    if (this.data.length == 0) {
+        x = this.width / 2, y = this.height / 2;
+    }
+    else {
+        for (var i = 0; i < this.data.length; i++) {
+            x += this.data[i].c.x;
+            y += this.data[i].c.y;
+        }
+        x = x / this.data.length;
+        y = y / this.data.length;
+    }
+    return this.addCircle(new Point(x, y), 'mean', '');
+}
+
 CanvasState.prototype.clear = function() {
     this.ctx.clearRect(0, 0, this.width, this.height);
 }
@@ -186,18 +202,33 @@ CanvasState.prototype.clear = function() {
 CanvasState.prototype.draw = function() {
     if (this.refresh) {
         this.clear();
-        for (var i = 0; i < this.allCircles.length; i++) {
-            this.allCircles[i].draw(this.ctx);
+        for (var i = 0; i < this.data.length; i++) {
+            this.data[i].draw(this.ctx);
         }
 
         for (var i = 0; i < this.means.length; i++) {
+            var sum = 0;
             for (var j = 0; j < this.data.length; j++) {
                 (new Square(this.means[i].c, this.data[j].c, 1)).draw(this.ctx);
+                sum += Math.pow(dist(this.means[i].c, this.data[j].c), 2);
             }
+            this.means[i].label = (sum / 100).toFixed(0).toString();
+            this.means[i].draw(this.ctx);
         }
 
         this.refresh = false;
     }
+}
+
+CanvasState.prototype.reset = function() {
+    this.refresh = true;
+    this.selection = null;
+    this.data = [];
+    this.means = [];
+    this.medians = [];
+    this.allCircles = [];
+    this.dragoffsetx = 0;
+    this.dragoffsety = 0;
 }
 
 // Take what you can, give nothing back!
@@ -219,7 +250,10 @@ CanvasState.prototype.getMouse = function(e) {
 
 function init() {
     var s = new CanvasState(document.getElementById('myCanvas'));
-    s.addCircle(new Point(100, 100), 'mean');
+    $('#addMean').click(function() { s.addMean(); });
+    $('#reset').click(function() { s.reset(); });
 }
+
+
 
 init();
