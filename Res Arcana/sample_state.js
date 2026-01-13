@@ -227,6 +227,7 @@ const sampleGameState2p = {
 };
 
 // 3-player sample game state
+// Demonstrates: opponent has the first player marker
 const sampleGameState3p = {
     players: [
         {
@@ -243,7 +244,7 @@ const sampleGameState3p = {
             deck: [sampleCards.artifact4, sampleCards.artifact5],
             discard: [sampleCards.artifact6],
             resources: { [ResourceType.RED]: 1, [ResourceType.BLUE]: 2, [ResourceType.GREEN]: 0, [ResourceType.BLACK]: 1, [ResourceType.GOLD]: 3 },
-            hasFirstPlayerToken: true,
+            hasFirstPlayerToken: false,  // You don't have it
             firstPlayerTokenFaceUp: true
         },
         {
@@ -260,7 +261,7 @@ const sampleGameState3p = {
             deck: [sampleCards.artifact4, sampleCards.artifact5],
             discard: [],
             resources: { [ResourceType.RED]: 0, [ResourceType.BLUE]: 1, [ResourceType.GREEN]: 3, [ResourceType.BLACK]: 2, [ResourceType.GOLD]: 0 },
-            hasFirstPlayerToken: false,
+            hasFirstPlayerToken: true,  // Opponent 1 has the first player marker
             firstPlayerTokenFaceUp: true
         },
         {
