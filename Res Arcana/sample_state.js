@@ -72,8 +72,12 @@ const sampleCards = {
     scroll10: { name: 'Spirit Call', cardType: CardType.SCROLL }
 };
 
-// Sample game state
-const sampleGameState = {
+// Additional mages for 3-4 player games
+sampleCards.mage3 = { name: 'Alchemist', cardType: CardType.MAGE };
+sampleCards.mage4 = { name: 'Druid', cardType: CardType.MAGE };
+
+// 2-player sample game state
+const sampleGameState2p = {
     players: [
         {
             playerId: 0,
@@ -221,3 +225,155 @@ const sampleGameState = {
         {}, {}, {}, {}
     ]
 };
+
+// 3-player sample game state
+const sampleGameState3p = {
+    players: [
+        {
+            playerId: 0,
+            mage: { card: sampleCards.mage1, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem1, tapped: false, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact1, tapped: false, resources: { [ResourceType.RED]: 2 } }
+            ],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [sampleCards.scroll1],
+            hand: [sampleCards.artifact2, sampleCards.artifact3],
+            deck: [sampleCards.artifact4, sampleCards.artifact5],
+            discard: [sampleCards.artifact6],
+            resources: { [ResourceType.RED]: 1, [ResourceType.BLUE]: 2, [ResourceType.GREEN]: 0, [ResourceType.BLACK]: 1, [ResourceType.GOLD]: 3 },
+            hasFirstPlayerToken: true,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 1,
+            mage: { card: sampleCards.mage2, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem2, tapped: true, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact2, tapped: false, resources: { [ResourceType.BLACK]: 1 } }
+            ],
+            monuments: [{ card: sampleCards.monument1, tapped: false, resources: {} }],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [sampleCards.artifact3],
+            deck: [sampleCards.artifact4, sampleCards.artifact5],
+            discard: [],
+            resources: { [ResourceType.RED]: 0, [ResourceType.BLUE]: 1, [ResourceType.GREEN]: 3, [ResourceType.BLACK]: 2, [ResourceType.GOLD]: 0 },
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 2,
+            mage: { card: sampleCards.mage3, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem3, tapped: false, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact3, tapped: true, resources: { [ResourceType.GREEN]: 2 } }
+            ],
+            monuments: [],
+            placesOfPower: [{ card: sampleCards.pop1, tapped: false, resources: { [ResourceType.BLUE]: 2 } }],
+            scrolls: [sampleCards.scroll2],
+            hand: [sampleCards.artifact4, sampleCards.artifact5],
+            deck: [sampleCards.artifact6],
+            discard: [sampleCards.artifact1],
+            resources: { [ResourceType.RED]: 2, [ResourceType.BLUE]: 0, [ResourceType.GREEN]: 1, [ResourceType.BLACK]: 0, [ResourceType.GOLD]: 2 },
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        }
+    ],
+    availableMonuments: [sampleCards.monument2],
+    availablePlacesOfPower: [sampleCards.pop2, sampleCards.pop3],
+    availableMagicItems: [sampleCards.magicItem4, sampleCards.magicItem5, sampleCards.magicItem6],
+    availableScrolls: [sampleCards.scroll3, sampleCards.scroll4],
+    monumentDeck: [{}, {}, {}]
+};
+
+// 4-player sample game state
+// Demonstrates: (a) your deck empty, (b) opponent 1 deck empty, (c) opponent 2 hand empty
+const sampleGameState4p = {
+    players: [
+        {
+            playerId: 0,
+            mage: { card: sampleCards.mage1, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem1, tapped: false, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact1, tapped: false, resources: { [ResourceType.RED]: 1 } }
+            ],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [sampleCards.artifact2, sampleCards.artifact3],
+            deck: [],  // (a) Your deck is empty
+            discard: [sampleCards.artifact4, sampleCards.artifact5],
+            resources: { [ResourceType.RED]: 1, [ResourceType.BLUE]: 2, [ResourceType.GREEN]: 0, [ResourceType.BLACK]: 1, [ResourceType.GOLD]: 3 },
+            hasFirstPlayerToken: true,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 1,
+            mage: { card: sampleCards.mage2, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem2, tapped: true, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact2, tapped: false, resources: {} }
+            ],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [sampleCards.scroll1],
+            hand: [sampleCards.artifact3],
+            deck: [],  // (b) Opponent 1 deck is empty
+            discard: [sampleCards.artifact4, sampleCards.artifact5, sampleCards.artifact6],
+            resources: { [ResourceType.RED]: 0, [ResourceType.BLUE]: 1, [ResourceType.GREEN]: 3, [ResourceType.BLACK]: 2, [ResourceType.GOLD]: 0 },
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 2,
+            mage: { card: sampleCards.mage3, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem3, tapped: false, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact3, tapped: true, resources: { [ResourceType.GREEN]: 2 } }
+            ],
+            monuments: [{ card: sampleCards.monument1, tapped: false, resources: {} }],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],  // (c) Opponent 2 hand is empty
+            deck: [sampleCards.artifact5, sampleCards.artifact6],
+            discard: [sampleCards.artifact1],
+            resources: { [ResourceType.RED]: 2, [ResourceType.BLUE]: 0, [ResourceType.GREEN]: 1, [ResourceType.BLACK]: 0, [ResourceType.GOLD]: 2 },
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 3,
+            mage: { card: sampleCards.mage4, tapped: false, resources: {} },
+            magicItem: { card: sampleCards.magicItem4, tapped: false, resources: {} },
+            artifacts: [
+                { card: sampleCards.artifact4, tapped: false, resources: { [ResourceType.BLACK]: 1 } }
+            ],
+            monuments: [],
+            placesOfPower: [{ card: sampleCards.pop1, tapped: false, resources: { [ResourceType.BLUE]: 3 } }],
+            scrolls: [sampleCards.scroll2],
+            hand: [sampleCards.artifact5, sampleCards.artifact6],
+            deck: [sampleCards.artifact1],
+            discard: [],
+            resources: { [ResourceType.RED]: 0, [ResourceType.BLUE]: 2, [ResourceType.GREEN]: 2, [ResourceType.BLACK]: 1, [ResourceType.GOLD]: 1 },
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        }
+    ],
+    availableMonuments: [sampleCards.monument2],
+    availablePlacesOfPower: [sampleCards.pop2],
+    availableMagicItems: [sampleCards.magicItem5, sampleCards.magicItem6],
+    availableScrolls: [sampleCards.scroll3, sampleCards.scroll4],
+    monumentDeck: [{}, {}]
+};
+
+// All sample states
+const sampleStates = {
+    '2p': sampleGameState2p,
+    '3p': sampleGameState3p,
+    '4p': sampleGameState4p
+};
+
+// Current active state (default to 2p)
+let sampleGameState = sampleGameState2p;

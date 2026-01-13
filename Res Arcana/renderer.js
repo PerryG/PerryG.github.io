@@ -135,6 +135,40 @@ function renderFirstPlayerToken(player) {
 }
 
 /**
+ * Generate HTML for an opponent area
+ */
+function renderOpponentArea(opponent, index) {
+    const label = opponent.playerId !== undefined ? `Opponent ${index + 1}` : 'Opponent';
+    return `
+        <div class="player-area opponent-area" id="opponent-area-${index}">
+            <div class="area-label">${label}</div>
+            <div class="player-info-bar">
+                <div class="player-resources">${renderPlayerResources(opponent.resources)}</div>
+                <div class="first-player-slot">${renderFirstPlayerToken(opponent)}</div>
+            </div>
+            <div class="player-board">
+                <div class="side-piles">
+                    <div class="discard-area">
+                        <div class="zone-label">Discard</div>
+                        <div class="discard-cards">${opponent.discard.map(card => renderCard(card)).join('')}</div>
+                    </div>
+                    <div class="deck">
+                        <span class="deck-label">Deck</span>
+                        <span class="deck-count">${opponent.deckCount}</span>
+                    </div>
+                    <div class="deck hidden-hand">
+                        <span class="deck-label">Hand</span>
+                        <span class="deck-count">${opponent.handCount}</span>
+                    </div>
+                </div>
+                <div class="controlled-cards">${renderControlledCards(opponent)}</div>
+                <div class="player-scrolls">${opponent.scrolls.map(card => renderCard(card)).join('')}</div>
+            </div>
+        </div>
+    `;
+}
+
+/**
  * Render the game board for a specific player's view
  */
 function renderGame(gameState, viewingPlayerId) {
@@ -144,27 +178,9 @@ function renderGame(gameState, viewingPlayerId) {
     const viewingPlayer = visibleState.players.find(p => p.playerId === viewingPlayerId);
     const opponents = visibleState.players.filter(p => p.playerId !== viewingPlayerId);
 
-    // For now, just show first opponent (2-player focused)
-    const opponent = opponents[0];
-
-    // Render opponent area
-    document.getElementById('opponent-resources').innerHTML = renderPlayerResources(opponent.resources);
-    document.getElementById('opponent-controlled').innerHTML = renderControlledCards(opponent);
-
-    // Update opponent deck and hand counts
-    document.querySelector('#opponent-deck .deck-count').textContent = opponent.deckCount;
-    document.querySelector('#opponent-hand .deck-count').textContent = opponent.handCount;
-
-    // Render opponent discard pile
-    document.querySelector('#opponent-discard .discard-cards').innerHTML =
-        opponent.discard.map(card => renderCard(card)).join('');
-
-    // Render opponent scrolls
-    document.getElementById('opponent-scrolls').innerHTML =
-        opponent.scrolls.map(card => renderCard(card)).join('');
-
-    // First player token for opponent
-    document.getElementById('opponent-token-slot').innerHTML = renderFirstPlayerToken(opponent);
+    // Render all opponents
+    const opponentsContainer = document.getElementById('opponents-container');
+    opponentsContainer.innerHTML = opponents.map((opp, i) => renderOpponentArea(opp, i)).join('');
 
     // Render shared zones
     document.getElementById('available-places').innerHTML =
@@ -217,6 +233,14 @@ function toggleDebug() {
     panel.classList.toggle('collapsed');
     document.body.classList.toggle('debug-collapsed');
     button.textContent = panel.classList.contains('collapsed') ? '◀ Debug' : 'Debug ▶';
+}
+
+/**
+ * Switch between sample states (2p, 3p, 4p)
+ */
+function switchSampleState(stateKey) {
+    sampleGameState = sampleStates[stateKey];
+    renderGame(sampleGameState, 0);
 }
 
 // Initialize with sample state, viewing as player 0
