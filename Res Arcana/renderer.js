@@ -18,6 +18,7 @@ function getVisibleState(gameState, viewingPlayerId) {
                 artifacts: player.artifacts,
                 monuments: player.monuments,
                 placesOfPower: player.placesOfPower,
+                scrolls: player.scrolls,
                 // Hand: visible only to owning player
                 hand: isViewingPlayer ? player.hand : null,
                 handCount: player.hand.length,
@@ -32,6 +33,8 @@ function getVisibleState(gameState, viewingPlayerId) {
         }),
         availableMonuments: gameState.availableMonuments,
         availablePlacesOfPower: gameState.availablePlacesOfPower,
+        availableMagicItems: gameState.availableMagicItems,
+        availableScrolls: gameState.availableScrolls,
         monumentDeckCount: gameState.monumentDeck.length
     };
     return visibleState;
@@ -156,6 +159,10 @@ function renderGame(gameState, viewingPlayerId) {
     document.querySelector('#opponent-discard .discard-cards').innerHTML =
         opponent.discard.map(card => renderCard(card)).join('');
 
+    // Render opponent scrolls
+    document.getElementById('opponent-scrolls').innerHTML =
+        opponent.scrolls.map(card => renderCard(card)).join('');
+
     // First player token for opponent
     document.getElementById('opponent-token-slot').innerHTML = renderFirstPlayerToken(opponent);
 
@@ -165,6 +172,10 @@ function renderGame(gameState, viewingPlayerId) {
     document.getElementById('available-monuments').innerHTML =
         visibleState.availableMonuments.map(card => renderCard(card)).join('');
     document.querySelector('#monument-deck .deck-count').textContent = visibleState.monumentDeckCount;
+    document.getElementById('available-magic-items').innerHTML =
+        visibleState.availableMagicItems.map(card => renderCard(card)).join('');
+    document.getElementById('available-scrolls').innerHTML =
+        visibleState.availableScrolls.map(card => renderCard(card)).join('');
 
     // Render player area
     document.getElementById('player-resources').innerHTML = renderPlayerResources(viewingPlayer.resources);
@@ -176,6 +187,10 @@ function renderGame(gameState, viewingPlayerId) {
     // Render player discard pile
     document.querySelector('#player-discard .discard-cards').innerHTML =
         viewingPlayer.discard.map(card => renderCard(card)).join('');
+
+    // Render player scrolls
+    document.getElementById('player-scrolls').innerHTML =
+        viewingPlayer.scrolls.map(card => renderCard(card)).join('');
 
     // First player token for player
     document.getElementById('player-token-slot').innerHTML = renderFirstPlayerToken(viewingPlayer);
@@ -191,6 +206,17 @@ function renderGame(gameState, viewingPlayerId) {
         JSON.stringify(visibleState, null, 2);
     document.getElementById('full-state').textContent =
         JSON.stringify(gameState, null, 2);
+}
+
+/**
+ * Toggle debug panel visibility
+ */
+function toggleDebug() {
+    const panel = document.getElementById('debug-panel');
+    const button = document.getElementById('debug-toggle');
+    panel.classList.toggle('collapsed');
+    document.body.classList.toggle('debug-collapsed');
+    button.textContent = panel.classList.contains('collapsed') ? '◀ Debug' : 'Debug ▶';
 }
 
 // Initialize with sample state, viewing as player 0

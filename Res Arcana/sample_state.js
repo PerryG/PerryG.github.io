@@ -14,7 +14,8 @@ const CardType = {
     PLACE_OF_POWER: 'place_of_power',
     MONUMENT: 'monument',
     MAGIC_ITEM: 'magic_item',
-    MAGE: 'mage'
+    MAGE: 'mage',
+    SCROLL: 'scroll'
 };
 
 // Sample cards (just names and types for now)
@@ -46,7 +47,29 @@ const sampleCards = {
     // Monuments
     monument1: { name: 'Dragon\'s Lair', cardType: CardType.MONUMENT },
     monument2: { name: 'Great Pyramid', cardType: CardType.MONUMENT },
-    monument3: { name: 'Obelisk', cardType: CardType.MONUMENT }
+    monument3: { name: 'Obelisk', cardType: CardType.MONUMENT },
+
+    // Additional Magic Items (for available pool)
+    magicItem3: { name: 'Divination', cardType: CardType.MAGIC_ITEM },
+    magicItem4: { name: 'Protection', cardType: CardType.MAGIC_ITEM },
+    magicItem5: { name: 'Transmutation', cardType: CardType.MAGIC_ITEM },
+    magicItem6: { name: 'Destruction', cardType: CardType.MAGIC_ITEM },
+    magicItem7: { name: 'Resurrection', cardType: CardType.MAGIC_ITEM },
+    magicItem8: { name: 'Conjuration', cardType: CardType.MAGIC_ITEM },
+    magicItem9: { name: 'Illusion', cardType: CardType.MAGIC_ITEM },
+    magicItem10: { name: 'Enchantment', cardType: CardType.MAGIC_ITEM },
+
+    // Scrolls
+    scroll1: { name: 'Cursed Land', cardType: CardType.SCROLL },
+    scroll2: { name: 'Elemental Spring', cardType: CardType.SCROLL },
+    scroll3: { name: 'Judgment', cardType: CardType.SCROLL },
+    scroll4: { name: 'Pyrrhic Victory', cardType: CardType.SCROLL },
+    scroll5: { name: 'Dark Pact', cardType: CardType.SCROLL },
+    scroll6: { name: 'Sacred Rite', cardType: CardType.SCROLL },
+    scroll7: { name: 'Blood Oath', cardType: CardType.SCROLL },
+    scroll8: { name: 'Binding Word', cardType: CardType.SCROLL },
+    scroll9: { name: 'Final Rest', cardType: CardType.SCROLL },
+    scroll10: { name: 'Spirit Call', cardType: CardType.SCROLL }
 };
 
 // Sample game state
@@ -83,6 +106,9 @@ const sampleGameState = {
                     tapped: false,
                     resources: { [ResourceType.BLUE]: 3, [ResourceType.GOLD]: 1 }
                 }
+            ],
+            scrolls: [
+                sampleCards.scroll1
             ],
             hand: [
                 sampleCards.artifact3,
@@ -135,6 +161,9 @@ const sampleGameState = {
                 }
             ],
             placesOfPower: [],
+            scrolls: [
+                sampleCards.scroll2
+            ],
             hand: [
                 sampleCards.artifact4,
                 sampleCards.artifact5
@@ -162,9 +191,30 @@ const sampleGameState = {
         sampleCards.monument3
     ],
     availablePlacesOfPower: [
+        sampleCards.pop1,
         sampleCards.pop2,
         sampleCards.pop3,
         sampleCards.pop4
+    ],
+    availableMagicItems: [
+        sampleCards.magicItem3,
+        sampleCards.magicItem4,
+        sampleCards.magicItem5,
+        sampleCards.magicItem6,
+        sampleCards.magicItem7,
+        sampleCards.magicItem8,
+        sampleCards.magicItem9,
+        sampleCards.magicItem10
+    ],
+    availableScrolls: [
+        sampleCards.scroll3,
+        sampleCards.scroll4,
+        sampleCards.scroll5,
+        sampleCards.scroll6,
+        sampleCards.scroll7,
+        sampleCards.scroll8,
+        sampleCards.scroll9,
+        sampleCards.scroll10
     ],
     monumentDeck: [
         // Face down, contents hidden

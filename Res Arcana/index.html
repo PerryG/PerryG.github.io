@@ -16,8 +16,11 @@
                 <div class="first-player-slot" id="opponent-token-slot"></div>
             </div>
             <div class="player-board">
-                <div class="controlled-cards" id="opponent-controlled"></div>
                 <div class="side-piles">
+                    <div class="discard-area" id="opponent-discard">
+                        <div class="zone-label">Discard</div>
+                        <div class="discard-cards"></div>
+                    </div>
                     <div class="deck" id="opponent-deck">
                         <span class="deck-label">Deck</span>
                         <span class="deck-count">0</span>
@@ -26,26 +29,35 @@
                         <span class="deck-label">Hand</span>
                         <span class="deck-count">0</span>
                     </div>
-                    <div class="discard-area" id="opponent-discard">
-                        <div class="zone-label">Discard</div>
-                        <div class="discard-cards"></div>
-                    </div>
                 </div>
+                <div class="controlled-cards" id="opponent-controlled"></div>
+                <div class="player-scrolls" id="opponent-scrolls"></div>
             </div>
         </div>
 
         <!-- Shared zones (middle) -->
         <div id="shared-area">
+            <div class="shared-zone" id="monuments-zone">
+                <div class="zone-label">Monuments</div>
+                <div class="zone-cards">
+                    <div class="deck" id="monument-deck">
+                        <span class="deck-label">Deck</span>
+                        <span class="deck-count"></span>
+                    </div>
+                    <div id="available-monuments"></div>
+                </div>
+            </div>
             <div class="shared-zone" id="places-of-power-zone">
                 <div class="zone-label">Places of Power</div>
                 <div class="zone-cards" id="available-places"></div>
             </div>
-            <div class="shared-zone" id="monuments-zone">
-                <div class="zone-label">Monuments</div>
-                <div class="zone-cards" id="available-monuments"></div>
-                <div class="deck" id="monument-deck">
-                    <span class="deck-count"></span>
-                </div>
+            <div class="shared-zone secondary-zone" id="magic-items-zone">
+                <div class="zone-label">Magic Items</div>
+                <div class="zone-cards" id="available-magic-items"></div>
+            </div>
+            <div class="shared-zone secondary-zone" id="scrolls-zone">
+                <div class="zone-label">Scrolls</div>
+                <div class="zone-cards" id="available-scrolls"></div>
             </div>
         </div>
 
@@ -57,17 +69,18 @@
                 <div class="first-player-slot" id="player-token-slot"></div>
             </div>
             <div class="player-board">
-                <div class="controlled-cards" id="player-controlled"></div>
                 <div class="side-piles">
-                    <div class="deck" id="player-deck">
-                        <span class="deck-label">Deck</span>
-                        <span class="deck-count">0</span>
-                    </div>
                     <div class="discard-area" id="player-discard">
                         <div class="zone-label">Discard</div>
                         <div class="discard-cards"></div>
                     </div>
+                    <div class="deck" id="player-deck">
+                        <span class="deck-label">Deck</span>
+                        <span class="deck-count">0</span>
+                    </div>
                 </div>
+                <div class="controlled-cards" id="player-controlled"></div>
+                <div class="player-scrolls" id="player-scrolls"></div>
             </div>
             <div class="hand-area" id="player-hand">
                 <div class="zone-label">Hand</div>
@@ -78,13 +91,16 @@
 
     <!-- Debug panel -->
     <div id="debug-panel">
-        <div class="debug-section">
-            <h3>Visible State (Player View)</h3>
-            <pre id="visible-state"></pre>
-        </div>
-        <div class="debug-section">
-            <h3>Full State (Debug)</h3>
-            <pre id="full-state"></pre>
+        <button id="debug-toggle" onclick="toggleDebug()">Debug ▶</button>
+        <div id="debug-content">
+            <div class="debug-section">
+                <h3>Visible State (Player View)</h3>
+                <pre id="visible-state"></pre>
+            </div>
+            <div class="debug-section">
+                <h3>Full State (Debug)</h3>
+                <pre id="full-state"></pre>
+            </div>
         </div>
     </div>
 

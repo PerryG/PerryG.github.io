@@ -17,6 +17,7 @@ class CardType(Enum):
     MONUMENT = "monument"
     MAGIC_ITEM = "magic_item"
     MAGE = "mage"
+    SCROLL = "scroll"
 
 
 @dataclass
@@ -58,6 +59,7 @@ class PlayerState:
     artifacts: List[ControlledCard] = field(default_factory=list)
     monuments: List[ControlledCard] = field(default_factory=list)
     places_of_power: List[ControlledCard] = field(default_factory=list)
+    scrolls: List[Card] = field(default_factory=list)  # Scrolls can't be tapped or hold resources
 
     # Hand, deck, discard (artifacts only)
     hand: List[Card] = field(default_factory=list)
@@ -97,6 +99,8 @@ class GameState:
     # Shared zones
     available_monuments: List[Card] = field(default_factory=list)
     available_places_of_power: List[Card] = field(default_factory=list)
+    available_magic_items: List[Card] = field(default_factory=list)
+    available_scrolls: List[Card] = field(default_factory=list)
     monument_deck: List[Card] = field(default_factory=list)
 
     def get_player(self, player_id: int) -> Optional[PlayerState]:

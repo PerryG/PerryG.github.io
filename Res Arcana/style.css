@@ -5,19 +5,21 @@
 body {
     margin: 0;
     padding: 10px;
+    padding-right: 400px; /* Space for open debug panel */
     font-family: Arial, sans-serif;
     background-color: #1a1a2e;
     color: #eee;
-    display: flex;
-    gap: 20px;
+    transition: padding-right 0.3s ease;
+}
+
+body.debug-collapsed {
+    padding-right: 60px; /* Space for collapsed debug panel */
 }
 
 #game-container {
-    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 15px;
-    max-width: 1000px;
 }
 
 /* Player areas */
@@ -96,9 +98,9 @@ body {
 
 .side-piles {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
-    min-width: 100px;
+    align-items: flex-start;
 }
 
 /* Card containers */
@@ -106,7 +108,6 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    flex: 1;
 }
 
 .zone-cards, .hand-cards {
@@ -166,6 +167,48 @@ body {
 .card.monument { border-color: #f39c12; }
 .card.magic_item { border-color: #3498db; }
 .card.mage { border-color: #e74c3c; }
+.card.scroll { border-color: #17a2b8; }
+
+/* Scrolls - smaller horizontal cards */
+.card.scroll {
+    width: 70px;
+    height: 45px;
+    padding: 3px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.card.scroll .card-name {
+    font-size: 8px;
+    margin-bottom: 0;
+}
+
+.card.scroll .card-type {
+    display: none;
+}
+
+/* Player scrolls area */
+.player-scrolls {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* Available magic items - smaller and less prominent */
+#magic-items-zone .card {
+    width: 70px;
+    height: 100px;
+    opacity: 0.7;
+}
+
+#magic-items-zone .card .card-name {
+    font-size: 8px;
+}
+
+#magic-items-zone .card .card-type {
+    font-size: 7px;
+}
 
 /* Resources on cards */
 .card-resources {
@@ -244,14 +287,31 @@ body {
 /* Shared zones */
 #shared-area {
     display: flex;
-    gap: 20px;
+    justify-content: space-between;
     background-color: #1f1f3a;
     border-radius: 8px;
     padding: 10px;
+    align-items: flex-start;
 }
 
 .shared-zone {
-    flex: 1;
+    flex: 0 0 auto;
+}
+
+#monuments-zone {
+    display: flex;
+    flex-direction: column;
+}
+
+#monuments-zone .zone-cards {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#available-monuments {
+    display: flex;
+    gap: 10px;
 }
 
 .zone-label {
@@ -259,6 +319,26 @@ body {
     color: #888;
     margin-bottom: 8px;
     text-transform: uppercase;
+}
+
+/* Secondary zones - less prominent */
+.shared-zone.secondary-zone .zone-label {
+    font-size: 10px;
+}
+
+/* Magic items grid - 2 rows of 4 */
+#magic-items-zone .zone-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    width: 300px;
+}
+
+/* Scrolls grid - 4 rows of 2 */
+#scrolls-zone .zone-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
 }
 
 /* Deck display */
@@ -328,13 +408,43 @@ body {
 
 /* Debug panel */
 #debug-panel {
-    width: 400px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100vh;
     background-color: #0f0f23;
-    border-radius: 8px;
-    padding: 10px;
+    border-left: 2px solid #333;
     font-size: 11px;
+    display: flex;
+    transition: transform 0.3s ease;
+    z-index: 100;
+}
+
+#debug-panel.collapsed {
+    transform: translateX(calc(100% - 40px));
+}
+
+#debug-toggle {
+    width: 40px;
+    background-color: #1a1a2e;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 10px 5px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+}
+
+#debug-toggle:hover {
+    background-color: #252540;
+    color: #fff;
+}
+
+#debug-content {
+    width: 350px;
+    padding: 10px;
     overflow-y: auto;
-    max-height: 100vh;
 }
 
 .debug-section {
