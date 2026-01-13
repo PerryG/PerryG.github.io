@@ -32,3 +32,18 @@ Personal GitHub Pages site hosting a thesis link, interactive visualizations, an
 - Word/language puzzles: `longest_word.py`, `Ghost Solver.py`, `hangman.py`
 - Probability simulation: `ring_attack.py` (uses NumPy)
 - Scoring: `scoreme.py` calculates Kendall distance for ranking comparison
+
+## Res Arcana (in development)
+
+Browser-based implementation of the board game Res Arcana.
+
+**Architecture:** Python backend (game state/logic) + JavaScript frontend (rendering)
+
+**To view:** Open `Res Arcana/index.html` in a browser
+
+**Current status:** Substantial progress on game state and rendering. Next: game actions and flow.
+
+**Files:**
+- `game_state.py` - Python data structures for game state
+- `index.html`, `style.css`, `renderer.js` - Frontend rendering
+- `sample_state.js` - Test data for development
