@@ -8,9 +8,49 @@
 </head>
 <body>
     <div id="game-container">
+        <!-- Draft section (shown during draft phases, hidden during play) -->
+        <div id="draft-section" class="hidden">
+            <h2 id="draft-title">Drafting</h2>
+            <p id="draft-instructions"></p>
+
+            <!-- Cards to pick from (draft phase) -->
+            <div id="draft-cards" class="hidden">
+                <div class="zone-label">Choose a card:</div>
+                <div id="draft-card-options" class="card-selection"></div>
+            </div>
+
+            <!-- Mage selection -->
+            <div id="mage-selection" class="hidden">
+                <div class="zone-label">Choose your mage:</div>
+                <div id="mage-options" class="card-selection"></div>
+            </div>
+
+            <!-- Magic item selection -->
+            <div id="magic-item-selection" class="hidden">
+                <div class="zone-label">Choose a magic item:</div>
+                <div id="magic-item-options" class="card-selection"></div>
+            </div>
+
+            <!-- Your mage options (visible during draft) -->
+            <div id="your-mages" class="hidden">
+                <div class="zone-label">Your mage options:</div>
+                <div id="your-mage-cards"></div>
+            </div>
+
+            <!-- Drafted cards display -->
+            <div id="drafted-display">
+                <div class="zone-label">Your drafted cards:</div>
+                <div id="drafted-cards"></div>
+            </div>
+
+            <!-- Waiting indicator -->
+            <div id="waiting-indicator" class="hidden">
+                <p>Waiting for other players...</p>
+            </div>
+        </div>
         <!-- Your area (top) -->
         <div id="player-area" class="player-area">
-            <div class="area-label">You</div>
+            <div class="area-label" id="player-label">Player 1 (You)</div>
             <div class="player-info-bar">
                 <div class="player-resources" id="player-resources"></div>
                 <div class="first-player-slot" id="player-token-slot"></div>
@@ -70,11 +110,36 @@
         <button id="debug-toggle" onclick="toggleDebug()">Debug ▶</button>
         <div id="debug-content">
             <div class="debug-section">
-                <h3>Sample State</h3>
+                <h3>New Game</h3>
+                <select id="new-game-players">
+                    <option value="2">2 Players</option>
+                    <option value="3">3 Players</option>
+                    <option value="4">4 Players</option>
+                </select>
+                <button onclick="newGameFromUI()">Start New Game</button>
+            </div>
+            <div class="debug-section">
+                <h3>View As</h3>
+                <select id="view-as-player" onchange="switchViewingPlayer(this.value)">
+                    <option value="0">Player 1</option>
+                    <option value="1">Player 2</option>
+                    <option value="2">Player 3</option>
+                    <option value="3">Player 4</option>
+                </select>
+            </div>
+            <div class="debug-section">
+                <h3>Sample States (Offline)</h3>
                 <select id="state-selector" onchange="switchSampleState(this.value)">
-                    <option value="2p">2 Players</option>
-                    <option value="3p">3 Players</option>
-                    <option value="4p">4 Players</option>
+                    <optgroup label="Playing">
+                        <option value="2p">2 Players</option>
+                        <option value="3p">3 Players</option>
+                        <option value="4p">4 Players</option>
+                    </optgroup>
+                    <optgroup label="Draft Phases">
+                        <option value="draft1">Draft Round 1</option>
+                        <option value="mage">Mage Selection</option>
+                        <option value="magic_item">Magic Item Selection</option>
+                    </optgroup>
                 </select>
             </div>
             <div class="debug-section">

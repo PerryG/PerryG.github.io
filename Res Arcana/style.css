@@ -470,8 +470,39 @@ body.debug-collapsed {
     cursor: pointer;
 }
 
-#state-selector:hover {
+#state-selector:hover,
+#new-game-players:hover,
+#view-as-player:hover {
     border-color: #666;
+}
+
+#new-game-players,
+#view-as-player {
+    width: 100%;
+    padding: 8px;
+    background-color: #1a1a2e;
+    color: #eee;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+
+.debug-section button {
+    width: 100%;
+    padding: 8px;
+    background-color: #4ecca3;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.debug-section button:hover {
+    background-color: #3dbb92;
 }
 
 .debug-section h3 {
@@ -490,4 +521,106 @@ body.debug-collapsed {
     border-radius: 4px;
     max-height: 300px;
     overflow-y: auto;
+}
+
+/* Draft section (top of page during draft phases) */
+#draft-section {
+    background-color: #16213e;
+    border: 2px solid #4ecca3;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+#draft-section.hidden {
+    display: none;
+}
+
+#draft-title {
+    margin: 0 0 10px 0;
+    color: #4ecca3;
+    font-size: 20px;
+}
+
+#draft-instructions {
+    color: #888;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+/* Your mage options during draft */
+#your-mages {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #333;
+}
+
+#your-mage-cards {
+    display: flex;
+    gap: 10px;
+}
+
+/* Card selection area */
+.card-selection {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+/* Selectable cards */
+.card.selectable {
+    cursor: pointer;
+    border-width: 3px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card.selectable:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(78, 204, 163, 0.5);
+}
+
+/* Drafted cards display */
+#drafted-display {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #333;
+}
+
+#drafted-cards {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#drafted-cards:empty::after {
+    content: "No cards drafted yet";
+    color: #555;
+    font-style: italic;
+}
+
+/* Selected mage in drafted cards area */
+.selected-mage-wrapper {
+    display: inline-block;
+    margin-right: 15px;
+    padding-right: 15px;
+    border-right: 2px solid #444;
+}
+
+/* Waiting indicator */
+#waiting-indicator {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+}
+
+#waiting-indicator p {
+    margin: 0;
+    font-style: italic;
+}
+
+/* Hidden utility class */
+.hidden {
+    display: none !important;
 }

@@ -11,6 +11,17 @@ class ResourceType(Enum):
     GOLD = "gold"
 
 
+class GamePhase(Enum):
+    # Setup phases
+    SETUP = "setup"                          # Initial setup (dealing mages, artifacts)
+    DRAFTING_ROUND_1 = "drafting_round_1"    # Pick 1, pass 3 clockwise
+    DRAFTING_ROUND_2 = "drafting_round_2"    # Pick 1, pass 3 counter-clockwise
+    MAGE_SELECTION = "mage_selection"        # Secretly pick 1 of 2 mages
+    MAGIC_ITEM_SELECTION = "magic_item_selection"  # Take magic item in reverse order
+    # Gameplay
+    PLAYING = "playing"
+
+
 class CardType(Enum):
     ARTIFACT = "artifact"
     PLACE_OF_POWER = "place_of_power"
@@ -93,8 +104,25 @@ class PlayerState:
 
 
 @dataclass
+class DraftState:
+    """Tracks state during the drafting phase."""
+    # Cards each player is currently choosing from (indexed by player_id)
+    cards_to_pick: Dict[int, List[Card]] = field(default_factory=dict)
+    # Cards each player has drafted so far
+    drafted_cards: Dict[int, List[Card]] = field(default_factory=dict)
+    # Mage options for each player (they pick 1 of 2)
+    mage_options: Dict[int, List[Card]] = field(default_factory=dict)
+    # Selected mage (before reveal) - None until player selects
+    selected_mage: Dict[int, Optional[Card]] = field(default_factory=dict)
+    # Current player for magic item selection (reverse order)
+    magic_item_selector: Optional[int] = None
+
+
+@dataclass
 class GameState:
     players: List[PlayerState]
+    phase: GamePhase = GamePhase.SETUP
+    draft_state: Optional[DraftState] = None
 
     # Shared zones
     available_monuments: List[Card] = field(default_factory=list)

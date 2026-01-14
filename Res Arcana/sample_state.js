@@ -369,11 +369,204 @@ const sampleGameState4p = {
     monumentDeck: [{}, {}]
 };
 
+// Draft Phase sample states
+
+// Draft Round 1 - player has 4 cards to choose from
+const sampleDraftRound1 = {
+    phase: 'drafting_round_1',
+    players: [
+        {
+            playerId: 0,
+            mage: { card: { name: '', cardType: CardType.MAGE }, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: true,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 1,
+            mage: { card: { name: '', cardType: CardType.MAGE }, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        }
+    ],
+    draftState: {
+        cardsToPick: {
+            0: [sampleCards.artifact1, sampleCards.artifact2, sampleCards.artifact3, sampleCards.artifact4],
+            1: [sampleCards.artifact5, sampleCards.artifact6, sampleCards.artifact7, sampleCards.artifact8]
+        },
+        draftedCards: {
+            0: [],
+            1: []
+        },
+        mageOptions: {
+            0: [sampleCards.mage1, sampleCards.mage2],
+            1: [sampleCards.mage3, sampleCards.mage4]
+        },
+        selectedMage: {
+            0: null,
+            1: null
+        }
+    },
+    availableMonuments: [sampleCards.monument2, sampleCards.monument3],
+    availablePlacesOfPower: [sampleCards.pop1, sampleCards.pop2, sampleCards.pop3, sampleCards.pop4],
+    availableMagicItems: [
+        sampleCards.magicItem1, sampleCards.magicItem2, sampleCards.magicItem3, sampleCards.magicItem4,
+        sampleCards.magicItem5, sampleCards.magicItem6, sampleCards.magicItem7, sampleCards.magicItem8
+    ],
+    availableScrolls: [sampleCards.scroll1, sampleCards.scroll2, sampleCards.scroll3, sampleCards.scroll4],
+    monumentDeck: [{}, {}, {}, {}, {}]  // 2 players: 7 total (2 face-up + 5 in deck)
+};
+
+// Mage Selection phase - player has drafted 8 cards, now picks mage
+const sampleMageSelection = {
+    phase: 'mage_selection',
+    players: [
+        {
+            playerId: 0,
+            mage: { card: { name: '', cardType: CardType.MAGE }, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: true,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 1,
+            mage: { card: { name: '', cardType: CardType.MAGE }, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        }
+    ],
+    draftState: {
+        cardsToPick: { 0: [], 1: [] },
+        draftedCards: {
+            0: [sampleCards.artifact1, sampleCards.artifact2, sampleCards.artifact3, sampleCards.artifact4,
+                sampleCards.artifact5, sampleCards.artifact6, sampleCards.artifact7, sampleCards.artifact8],
+            1: [sampleCards.artifact1, sampleCards.artifact2, sampleCards.artifact3, sampleCards.artifact4,
+                sampleCards.artifact5, sampleCards.artifact6, sampleCards.artifact7, sampleCards.artifact8]
+        },
+        mageOptions: {
+            0: [sampleCards.mage1, sampleCards.mage2],
+            1: [sampleCards.mage3, sampleCards.mage4]
+        },
+        selectedMage: {
+            0: null,
+            1: null
+        }
+    },
+    availableMonuments: [sampleCards.monument2, sampleCards.monument3],
+    availablePlacesOfPower: [sampleCards.pop1, sampleCards.pop2, sampleCards.pop3, sampleCards.pop4],
+    availableMagicItems: [
+        sampleCards.magicItem1, sampleCards.magicItem2, sampleCards.magicItem3, sampleCards.magicItem4,
+        sampleCards.magicItem5, sampleCards.magicItem6, sampleCards.magicItem7, sampleCards.magicItem8
+    ],
+    availableScrolls: [sampleCards.scroll1, sampleCards.scroll2, sampleCards.scroll3, sampleCards.scroll4],
+    monumentDeck: [{}, {}, {}, {}, {}]  // 2 players: 7 total (2 face-up + 5 in deck)
+};
+
+// Magic Item Selection phase - player 1 (last in turn order) picks first
+const sampleMagicItemSelection = {
+    phase: 'magic_item_selection',
+    players: [
+        {
+            playerId: 0,
+            mage: { card: sampleCards.mage1, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: true,
+            firstPlayerTokenFaceUp: true
+        },
+        {
+            playerId: 1,
+            mage: { card: sampleCards.mage3, tapped: false, resources: {} },
+            magicItem: { card: { name: '', cardType: CardType.MAGIC_ITEM }, tapped: false, resources: {} },
+            artifacts: [],
+            monuments: [],
+            placesOfPower: [],
+            scrolls: [],
+            hand: [],
+            deck: [],
+            discard: [],
+            resources: {},
+            hasFirstPlayerToken: false,
+            firstPlayerTokenFaceUp: true
+        }
+    ],
+    draftState: {
+        cardsToPick: { 0: [], 1: [] },
+        draftedCards: {
+            0: [sampleCards.artifact1, sampleCards.artifact2, sampleCards.artifact3, sampleCards.artifact4,
+                sampleCards.artifact5, sampleCards.artifact6, sampleCards.artifact7, sampleCards.artifact8],
+            1: [sampleCards.artifact1, sampleCards.artifact2, sampleCards.artifact3, sampleCards.artifact4,
+                sampleCards.artifact5, sampleCards.artifact6, sampleCards.artifact7, sampleCards.artifact8]
+        },
+        mageOptions: {
+            0: [sampleCards.mage1, sampleCards.mage2],
+            1: [sampleCards.mage3, sampleCards.mage4]
+        },
+        selectedMage: {
+            0: sampleCards.mage1,
+            1: sampleCards.mage3
+        },
+        magicItemSelector: 1  // Player 1 picks first (last in turn order)
+    },
+    availableMonuments: [sampleCards.monument2, sampleCards.monument3],
+    availablePlacesOfPower: [sampleCards.pop1, sampleCards.pop2, sampleCards.pop3, sampleCards.pop4],
+    availableMagicItems: [
+        sampleCards.magicItem1, sampleCards.magicItem2, sampleCards.magicItem3, sampleCards.magicItem4,
+        sampleCards.magicItem5, sampleCards.magicItem6, sampleCards.magicItem7, sampleCards.magicItem8
+    ],
+    availableScrolls: [sampleCards.scroll1, sampleCards.scroll2, sampleCards.scroll3, sampleCards.scroll4],
+    monumentDeck: [{}, {}, {}, {}, {}]  // 2 players: 7 total (2 face-up + 5 in deck)
+};
+
 // All sample states
 const sampleStates = {
     '2p': sampleGameState2p,
     '3p': sampleGameState3p,
-    '4p': sampleGameState4p
+    '4p': sampleGameState4p,
+    'draft1': sampleDraftRound1,
+    'mage': sampleMageSelection,
+    'magic_item': sampleMagicItemSelection
 };
 
 // Current active state (default to 2p)

@@ -1,5 +1,86 @@
 // Renderer for Res Arcana game state
 
+// Game phase constants (must match Python GamePhase enum)
+const GamePhase = {
+    SETUP: 'setup',
+    DRAFTING_ROUND_1: 'drafting_round_1',
+    DRAFTING_ROUND_2: 'drafting_round_2',
+    MAGE_SELECTION: 'mage_selection',
+    MAGIC_ITEM_SELECTION: 'magic_item_selection',
+    PLAYING: 'playing'
+};
+
+// Current game state and viewing player (for interaction handlers)
+let currentGameState = null;
+let currentViewingPlayer = 0;
+
+// ============================================================
+// API Functions
+// ============================================================
+
+async function apiNewGame(numPlayers = 2) {
+    const response = await fetch('/api/new-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numPlayers })
+    });
+    return response.json();
+}
+
+async function apiGetState() {
+    const response = await fetch('/api/state');
+    if (response.status === 404) return null;
+    return response.json();
+}
+
+async function apiDraftPick(playerId, cardName) {
+    const response = await fetch('/api/draft/pick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, cardName })
+    });
+    return response.json();
+}
+
+async function apiMageSelect(playerId, mageName) {
+    const response = await fetch('/api/mage/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, mageName })
+    });
+    return response.json();
+}
+
+async function apiMagicItemSelect(playerId, itemName) {
+    const response = await fetch('/api/magic-item/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, itemName })
+    });
+    return response.json();
+}
+
+async function startNewGame(numPlayers = 2) {
+    const state = await apiNewGame(numPlayers);
+    if (state.error) {
+        console.error('Error starting game:', state.error);
+        return;
+    }
+    currentGameState = state;
+    currentViewingPlayer = 0;  // Reset to Player 1 when starting new game
+    renderGame(state, currentViewingPlayer);
+}
+
+async function loadCurrentGame() {
+    const state = await apiGetState();
+    if (state && !state.error) {
+        currentGameState = state;
+        renderGame(state, currentViewingPlayer);
+        return true;
+    }
+    return false;
+}
+
 /**
  * Filter game state to only show what's visible to a specific player.
  * Hidden information:
@@ -138,7 +219,8 @@ function renderFirstPlayerToken(player) {
  * Generate HTML for an opponent area
  */
 function renderOpponentArea(opponent, index) {
-    const label = opponent.playerId !== undefined ? `Opponent ${index + 1}` : 'Opponent';
+    const playerNum = opponent.playerId + 1;  // 1-indexed for display
+    const label = `Player ${playerNum}`;
     return `
         <div class="player-area opponent-area" id="opponent-area-${index}">
             <div class="area-label">${label}</div>
@@ -168,10 +250,275 @@ function renderOpponentArea(opponent, index) {
     `;
 }
 
+// ============================================================
+// Draft Phase Rendering
+// ============================================================
+
+/**
+ * Create HTML for a selectable card during drafting
+ */
+function renderSelectableCard(card, onClickHandler) {
+    const typeClass = card.cardType;
+    return `
+        <div class="card ${typeClass} selectable" onclick="${onClickHandler}">
+            <div class="card-name">${card.name}</div>
+            <div class="card-type">${card.cardType.replace('_', ' ')}</div>
+        </div>
+    `;
+}
+
+/**
+ * Render the draft section based on current game phase
+ */
+function renderDraftSection(gameState, viewingPlayerId) {
+    const section = document.getElementById('draft-section');
+    const phase = gameState.phase;
+    const draftState = gameState.draftState;
+
+    // Hide section during playing phase
+    if (phase === GamePhase.PLAYING || !phase) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+
+    // Hide all sub-sections initially
+    document.getElementById('draft-cards').classList.add('hidden');
+    document.getElementById('mage-selection').classList.add('hidden');
+    document.getElementById('magic-item-selection').classList.add('hidden');
+    document.getElementById('waiting-indicator').classList.add('hidden');
+    document.getElementById('your-mages').classList.add('hidden');
+
+    const titleEl = document.getElementById('draft-title');
+    const instructionsEl = document.getElementById('draft-instructions');
+
+    if (phase === GamePhase.DRAFTING_ROUND_1 || phase === GamePhase.DRAFTING_ROUND_2) {
+        renderDraftPhase(gameState, viewingPlayerId);
+    } else if (phase === GamePhase.MAGE_SELECTION) {
+        renderMageSelectionPhase(gameState, viewingPlayerId);
+    } else if (phase === GamePhase.MAGIC_ITEM_SELECTION) {
+        renderMagicItemSelectionPhase(gameState, viewingPlayerId);
+    } else if (phase === GamePhase.SETUP) {
+        titleEl.textContent = 'Setting up game...';
+        instructionsEl.textContent = 'Dealing cards to players.';
+    }
+}
+
+/**
+ * Render the card drafting phase
+ */
+function renderDraftPhase(gameState, viewingPlayerId) {
+    const draftState = gameState.draftState;
+    const phase = gameState.phase;
+
+    const titleEl = document.getElementById('draft-title');
+    const instructionsEl = document.getElementById('draft-instructions');
+    const draftCardsSection = document.getElementById('draft-cards');
+    const optionsEl = document.getElementById('draft-card-options');
+
+    const roundNum = phase === GamePhase.DRAFTING_ROUND_1 ? 1 : 2;
+    const direction = roundNum === 1 ? 'clockwise' : 'counter-clockwise';
+    titleEl.textContent = `Draft Round ${roundNum}`;
+    instructionsEl.textContent = `Pick one card, pass the rest ${direction}.`;
+
+    // Get cards available to this player
+    const cardsToPickObj = draftState.cardsToPick || {};
+    const cardsToPick = cardsToPickObj[viewingPlayerId] || [];
+
+    if (cardsToPick.length > 0) {
+        draftCardsSection.classList.remove('hidden');
+        optionsEl.innerHTML = cardsToPick.map((card, idx) =>
+            renderSelectableCard(card, `selectDraftCard(${idx})`)
+        ).join('');
+    } else {
+        document.getElementById('waiting-indicator').classList.remove('hidden');
+    }
+
+    // Show drafted cards
+    const draftedCardsObj = draftState.draftedCards || {};
+    const draftedCards = draftedCardsObj[viewingPlayerId] || [];
+    document.getElementById('drafted-cards').innerHTML =
+        draftedCards.map(card => renderCard(card)).join('');
+
+    // Show mage options during drafting (for reference)
+    const mageOptionsObj = draftState.mageOptions || {};
+    const mageOptions = mageOptionsObj[viewingPlayerId] || [];
+    if (mageOptions.length > 0) {
+        document.getElementById('your-mages').classList.remove('hidden');
+        document.getElementById('your-mage-cards').innerHTML =
+            mageOptions.map(mage => renderCard(mage)).join('');
+    }
+}
+
+/**
+ * Render the mage selection phase
+ */
+function renderMageSelectionPhase(gameState, viewingPlayerId) {
+    const draftState = gameState.draftState;
+
+    const titleEl = document.getElementById('draft-title');
+    const instructionsEl = document.getElementById('draft-instructions');
+    const mageSection = document.getElementById('mage-selection');
+    const optionsEl = document.getElementById('mage-options');
+
+    titleEl.textContent = 'Choose Your Mage';
+
+    const mageOptionsObj = draftState.mageOptions || {};
+    const mageOptions = mageOptionsObj[viewingPlayerId] || [];
+    const selectedMage = draftState.selectedMage?.[viewingPlayerId];
+
+    if (!selectedMage && mageOptions.length > 0) {
+        instructionsEl.textContent = 'Select one of your two mages. All mages will be revealed simultaneously.';
+        mageSection.classList.remove('hidden');
+        optionsEl.innerHTML = mageOptions.map((mage, idx) =>
+            renderSelectableCard(mage, `selectMage(${idx})`)
+        ).join('');
+    } else if (selectedMage) {
+        instructionsEl.textContent = 'Waiting for other players to select their mages...';
+        document.getElementById('waiting-indicator').classList.remove('hidden');
+    }
+
+    // Show drafted cards (and selected mage if chosen)
+    const draftedCardsObj = draftState.draftedCards || {};
+    const draftedCards = draftedCardsObj[viewingPlayerId] || [];
+
+    let draftedHtml = '';
+    if (selectedMage) {
+        draftedHtml += `<div class="selected-mage-wrapper">${renderCard(selectedMage)}</div>`;
+    }
+    draftedHtml += draftedCards.map(card => renderCard(card)).join('');
+    document.getElementById('drafted-cards').innerHTML = draftedHtml;
+}
+
+/**
+ * Render the magic item selection phase
+ */
+function renderMagicItemSelectionPhase(gameState, viewingPlayerId) {
+    const draftState = gameState.draftState;
+
+    const titleEl = document.getElementById('draft-title');
+    const instructionsEl = document.getElementById('draft-instructions');
+    const itemSection = document.getElementById('magic-item-selection');
+    const optionsEl = document.getElementById('magic-item-options');
+
+    titleEl.textContent = 'Choose Magic Item';
+
+    const currentSelector = draftState.magicItemSelector;
+    const isMyTurn = currentSelector === viewingPlayerId;
+
+    if (isMyTurn) {
+        instructionsEl.textContent = 'Your turn! Choose a magic item.';
+        itemSection.classList.remove('hidden');
+        optionsEl.innerHTML = gameState.availableMagicItems.map((item, idx) =>
+            renderSelectableCard(item, `selectMagicItem(${idx})`)
+        ).join('');
+    } else {
+        instructionsEl.textContent = `Waiting for Player ${currentSelector + 1} to choose...`;
+        document.getElementById('waiting-indicator').classList.remove('hidden');
+    }
+
+    // Show drafted cards and selected mage
+    const draftedCardsObj = draftState.draftedCards || {};
+    const draftedCards = draftedCardsObj[viewingPlayerId] || [];
+    const selectedMage = draftState.selectedMage?.[viewingPlayerId];
+
+    let draftedHtml = '';
+    if (selectedMage) {
+        draftedHtml += `<div class="selected-mage-wrapper">${renderCard(selectedMage)}</div>`;
+    }
+    draftedHtml += draftedCards.map(card => renderCard(card)).join('');
+    document.getElementById('drafted-cards').innerHTML = draftedHtml;
+}
+
+// ============================================================
+// Draft Interaction Handlers
+// ============================================================
+
+/**
+ * Called when player clicks a card during drafting
+ */
+async function selectDraftCard(cardIndex) {
+    if (!currentGameState || !currentGameState.draftState) return;
+
+    const cardsToPick = currentGameState.draftState.cardsToPick[currentViewingPlayer];
+    if (!cardsToPick || cardIndex >= cardsToPick.length) return;
+
+    const selectedCard = cardsToPick[cardIndex];
+    console.log('Selected draft card:', selectedCard.name);
+
+    const state = await apiDraftPick(currentViewingPlayer, selectedCard.name);
+    if (state.error) {
+        console.error('Error picking card:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Called when player clicks a mage during mage selection
+ */
+async function selectMage(mageIndex) {
+    if (!currentGameState || !currentGameState.draftState) return;
+
+    const mageOptions = currentGameState.draftState.mageOptions[currentViewingPlayer];
+    if (!mageOptions || mageIndex >= mageOptions.length) return;
+
+    const selectedMage = mageOptions[mageIndex];
+    console.log('Selected mage:', selectedMage.name);
+
+    const state = await apiMageSelect(currentViewingPlayer, selectedMage.name);
+    if (state.error) {
+        console.error('Error selecting mage:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Called when player clicks a magic item during magic item selection
+ */
+async function selectMagicItem(itemIndex) {
+    if (!currentGameState) return;
+
+    const items = currentGameState.availableMagicItems;
+    if (!items || itemIndex >= items.length) return;
+
+    const selectedItem = items[itemIndex];
+    console.log('Selected magic item:', selectedItem.name);
+
+    const state = await apiMagicItemSelect(currentViewingPlayer, selectedItem.name);
+    if (state.error) {
+        console.error('Error selecting magic item:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+// ============================================================
+// Main Render Function (Updated)
+// ============================================================
+
 /**
  * Render the game board for a specific player's view
  */
 function renderGame(gameState, viewingPlayerId) {
+    // Store for interaction handlers
+    currentGameState = gameState;
+    currentViewingPlayer = viewingPlayerId;
+
+    // Render draft section if in draft phase
+    renderDraftSection(gameState, viewingPlayerId);
+
+    // Update the View As dropdown to match player count
+    updateViewAsDropdown(gameState.players.length);
+
     const visibleState = getVisibleState(gameState, viewingPlayerId);
 
     // Find viewing player and opponent(s)
@@ -194,6 +541,7 @@ function renderGame(gameState, viewingPlayerId) {
         visibleState.availableScrolls.map(card => renderCard(card)).join('');
 
     // Render player area
+    document.getElementById('player-label').textContent = `Player ${viewingPlayerId + 1} (You)`;
     document.getElementById('player-resources').innerHTML = renderPlayerResources(viewingPlayer.resources);
     document.getElementById('player-controlled').innerHTML = renderControlledCards(viewingPlayer);
 
@@ -236,14 +584,56 @@ function toggleDebug() {
 }
 
 /**
- * Switch between sample states (2p, 3p, 4p)
+ * Switch between sample states (for offline testing)
  */
 function switchSampleState(stateKey) {
-    sampleGameState = sampleStates[stateKey];
-    renderGame(sampleGameState, 0);
+    if (typeof sampleStates !== 'undefined' && sampleStates[stateKey]) {
+        currentGameState = sampleStates[stateKey];
+        renderGame(currentGameState, 0);
+    }
 }
 
-// Initialize with sample state, viewing as player 0
-document.addEventListener('DOMContentLoaded', () => {
-    renderGame(sampleGameState, 0);
+/**
+ * Start a new game via API
+ */
+async function newGameFromUI() {
+    const selector = document.getElementById('new-game-players');
+    const numPlayers = parseInt(selector.value, 10);
+    await startNewGame(numPlayers);
+}
+
+/**
+ * Switch which player we're viewing as
+ */
+function switchViewingPlayer(playerId) {
+    currentViewingPlayer = parseInt(playerId, 10);
+    if (currentGameState) {
+        renderGame(currentGameState, currentViewingPlayer);
+    }
+}
+
+/**
+ * Update the "View As" dropdown to match the number of players
+ */
+function updateViewAsDropdown(numPlayers) {
+    const dropdown = document.getElementById('view-as-player');
+    dropdown.innerHTML = '';
+    for (let i = 0; i < numPlayers; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Player ${i + 1}`;
+        dropdown.appendChild(option);
+    }
+    dropdown.value = currentViewingPlayer;
+}
+
+// Initialize: try to load existing game, otherwise show welcome state
+document.addEventListener('DOMContentLoaded', async () => {
+    const hasGame = await loadCurrentGame();
+    if (!hasGame) {
+        // No game in progress - show a message or auto-start
+        console.log('No game in progress. Click "New Game" to start.');
+        // For convenience, auto-start a 2-player game
+        await startNewGame(2);
+    }
 });
