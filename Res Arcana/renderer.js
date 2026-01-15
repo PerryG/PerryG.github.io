@@ -205,7 +205,6 @@ function renderCard(card, controlled = null) {
     return `
         <div class="card ${typeClass} ${tappedClass}">
             <div class="card-name">${card.name}</div>
-            <div class="card-type">${card.cardType.replace('_', ' ')}</div>
             ${resourcesHtml}
         </div>
     `;
@@ -306,7 +305,6 @@ function renderSelectableCard(card, onClickHandler) {
     return `
         <div class="card ${typeClass} selectable" onclick="${onClickHandler}">
             <div class="card-name">${card.name}</div>
-            <div class="card-type">${card.cardType.replace('_', ' ')}</div>
         </div>
     `;
 }
