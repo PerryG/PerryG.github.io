@@ -1,7 +1,4 @@
-"""Card definitions for Res Arcana.
-
-Currently using placeholder names. These will be replaced with actual card names later.
-"""
+"""Card definitions for Res Arcana."""
 
 from game_state import Card, CardType
 

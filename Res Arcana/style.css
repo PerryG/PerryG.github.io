@@ -159,13 +159,6 @@ body.debug-collapsed {
     overflow-wrap: break-word;
 }
 
-.card-type {
-    font-size: 8px;
-    color: #888;
-    text-align: center;
-    text-transform: uppercase;
-}
-
 /* Card type colors */
 .card.artifact { border-color: #6c757d; }
 .card.place_of_power { border-color: #9b59b6; }
@@ -187,10 +180,6 @@ body.debug-collapsed {
 .card.scroll .card-name {
     font-size: 8px;
     margin-bottom: 0;
-}
-
-.card.scroll .card-type {
-    display: none;
 }
 
 /* Player scrolls area */
@@ -222,10 +211,6 @@ body.debug-collapsed {
 
 #magic-items-zone .card .card-name {
     font-size: 8px;
-}
-
-#magic-items-zone .card .card-type {
-    font-size: 7px;
 }
 
 /* Resources on cards */
@@ -275,10 +260,6 @@ body.debug-collapsed {
     width: 86px;
     height: 50px;
     font-size: 9px;
-}
-
-.discard-cards .card .card-type {
-    display: none;
 }
 
 .discard-cards .card .card-resources {
