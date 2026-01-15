@@ -1,5 +1,14 @@
 // Renderer for Res Arcana game state
 
+// Resource type constants (must match Python ResourceType enum)
+const ResourceType = {
+    RED: 'red',
+    BLUE: 'blue',
+    GREEN: 'green',
+    BLACK: 'black',
+    GOLD: 'gold'
+};
+
 // Game phase constants (must match Python GamePhase enum)
 const GamePhase = {
     SETUP: 'setup',
@@ -67,7 +76,10 @@ async function startNewGame(numPlayers = 2) {
         return;
     }
     currentGameState = state;
-    currentViewingPlayer = 0;  // Reset to Player 1 when starting new game
+    // Keep viewing player from selector, but clamp to valid range
+    if (currentViewingPlayer >= numPlayers) {
+        currentViewingPlayer = 0;
+    }
     renderGame(state, currentViewingPlayer);
 }
 
@@ -154,6 +166,34 @@ function renderCardResources(resources) {
     return `<div class="card-resources">${html}</div>`;
 }
 
+// All magic item names in fixed order
+const ALL_MAGIC_ITEMS = [
+    "Alchemy", "Calm | Elan", "Death | Life", "Divination", "Protection",
+    "Reanimate", "Research", "Transmutation", "Illusion", "Inscription"
+];
+
+// All scroll names in fixed order
+const ALL_SCROLLS = [
+    "Augury", "Destruction", "Disjunction", "Projection",
+    "Revivify", "Shield", "Transform", "Vitality"
+];
+
+/**
+ * Render fixed slots for items that shouldn't shift when taken
+ */
+function renderFixedSlots(availableItems, allItemNames) {
+    let html = '';
+    for (const name of allItemNames) {
+        const item = availableItems.find(c => c.name === name);
+        if (item) {
+            html += renderCard(item);
+        } else {
+            html += '<div class="card-slot empty"></div>';
+        }
+    }
+    return html;
+}
+
 /**
  * Create HTML for a single card
  */
@@ -184,9 +224,13 @@ function renderControlledCard(controlledCard) {
 function renderControlledCards(player) {
     let html = '';
 
-    // Mage and Magic Item first
-    html += renderControlledCard(player.mage);
-    html += renderControlledCard(player.magicItem);
+    // Mage and Magic Item first (skip if empty/placeholder)
+    if (player.mage?.card?.name) {
+        html += renderControlledCard(player.mage);
+    }
+    if (player.magicItem?.card?.name) {
+        html += renderControlledCard(player.magicItem);
+    }
 
     // Then artifacts
     for (const artifact of player.artifacts) {
@@ -513,11 +557,21 @@ function renderGame(gameState, viewingPlayerId) {
     currentGameState = gameState;
     currentViewingPlayer = viewingPlayerId;
 
+    // Phases where we hide player details (not magic item selection - mages are revealed then)
+    const hidePlayerDetails = gameState.phase === GamePhase.SETUP ||
+        gameState.phase === GamePhase.DRAFTING_ROUND_1 ||
+        gameState.phase === GamePhase.DRAFTING_ROUND_2 ||
+        gameState.phase === GamePhase.MAGE_SELECTION;
+
     // Render draft section if in draft phase
     renderDraftSection(gameState, viewingPlayerId);
 
     // Update the View As dropdown to match player count
     updateViewAsDropdown(gameState.players.length);
+
+    // Hide/show player areas based on phase
+    document.getElementById('player-area').classList.toggle('draft-mode', hidePlayerDetails);
+    document.getElementById('opponents-container').classList.toggle('draft-mode', hidePlayerDetails);
 
     const visibleState = getVisibleState(gameState, viewingPlayerId);
 
@@ -536,9 +590,9 @@ function renderGame(gameState, viewingPlayerId) {
         visibleState.availableMonuments.map(card => renderCard(card)).join('');
     document.querySelector('#monument-deck .deck-count').textContent = visibleState.monumentDeckCount;
     document.getElementById('available-magic-items').innerHTML =
-        visibleState.availableMagicItems.map(card => renderCard(card)).join('');
+        renderFixedSlots(visibleState.availableMagicItems, ALL_MAGIC_ITEMS);
     document.getElementById('available-scrolls').innerHTML =
-        visibleState.availableScrolls.map(card => renderCard(card)).join('');
+        renderFixedSlots(visibleState.availableScrolls, ALL_SCROLLS);
 
     // Render player area
     document.getElementById('player-label').textContent = `Player ${viewingPlayerId + 1} (You)`;
@@ -584,12 +638,24 @@ function toggleDebug() {
 }
 
 /**
- * Switch between sample states (for offline testing)
+ * Update "Play As" dropdown based on number of players selected
  */
-function switchSampleState(stateKey) {
-    if (typeof sampleStates !== 'undefined' && sampleStates[stateKey]) {
-        currentGameState = sampleStates[stateKey];
-        renderGame(currentGameState, 0);
+function updatePlayAsOptions() {
+    const numPlayers = parseInt(document.getElementById('new-game-players').value, 10);
+    const dropdown = document.getElementById('play-as-player');
+    const currentValue = parseInt(dropdown.value, 10);
+
+    dropdown.innerHTML = '';
+    for (let i = 0; i < numPlayers; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Player ${i + 1}`;
+        dropdown.appendChild(option);
+    }
+
+    // Keep current selection if still valid
+    if (currentValue < numPlayers) {
+        dropdown.value = currentValue;
     }
 }
 
@@ -597,8 +663,9 @@ function switchSampleState(stateKey) {
  * Start a new game via API
  */
 async function newGameFromUI() {
-    const selector = document.getElementById('new-game-players');
-    const numPlayers = parseInt(selector.value, 10);
+    const numPlayers = parseInt(document.getElementById('new-game-players').value, 10);
+    const playAs = parseInt(document.getElementById('play-as-player').value, 10);
+    currentViewingPlayer = playAs;
     await startNewGame(numPlayers);
 }
 

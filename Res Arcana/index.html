@@ -111,10 +111,16 @@
         <div id="debug-content">
             <div class="debug-section">
                 <h3>New Game</h3>
-                <select id="new-game-players">
-                    <option value="2">2 Players</option>
-                    <option value="3">3 Players</option>
-                    <option value="4">4 Players</option>
+                <label>Players</label>
+                <select id="new-game-players" onchange="updatePlayAsOptions()">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                </select>
+                <label>Play As</label>
+                <select id="play-as-player">
+                    <option value="0">Player 1</option>
+                    <option value="1">Player 2</option>
                 </select>
                 <button onclick="newGameFromUI()">Start New Game</button>
             </div>
@@ -123,23 +129,6 @@
                 <select id="view-as-player" onchange="switchViewingPlayer(this.value)">
                     <option value="0">Player 1</option>
                     <option value="1">Player 2</option>
-                    <option value="2">Player 3</option>
-                    <option value="3">Player 4</option>
-                </select>
-            </div>
-            <div class="debug-section">
-                <h3>Sample States (Offline)</h3>
-                <select id="state-selector" onchange="switchSampleState(this.value)">
-                    <optgroup label="Playing">
-                        <option value="2p">2 Players</option>
-                        <option value="3p">3 Players</option>
-                        <option value="4p">4 Players</option>
-                    </optgroup>
-                    <optgroup label="Draft Phases">
-                        <option value="draft1">Draft Round 1</option>
-                        <option value="mage">Mage Selection</option>
-                        <option value="magic_item">Magic Item Selection</option>
-                    </optgroup>
                 </select>
             </div>
             <div class="debug-section">
@@ -153,7 +142,6 @@
         </div>
     </div>
 
-    <script src="sample_state.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

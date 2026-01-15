@@ -202,10 +202,23 @@ body.debug-collapsed {
     gap: 5px;
 }
 
-/* Available magic items - smaller and less prominent */
-#magic-items-zone .card {
+/* Empty card slot placeholder */
+.card-slot.empty {
     width: 70px;
     height: 100px;
+    background-color: rgba(45, 45, 68, 0.3);
+    border: 2px dashed #333;
+    border-radius: 6px;
+}
+
+/* Available magic items - smaller and less prominent */
+#magic-items-zone .card,
+#magic-items-zone .card-slot.empty {
+    width: 70px;
+    height: 100px;
+}
+
+#magic-items-zone .card {
     opacity: 0.7;
 }
 
@@ -333,12 +346,12 @@ body.debug-collapsed {
     font-size: 10px;
 }
 
-/* Magic items grid - 2 rows of 4 */
+/* Magic items grid - 2 rows of 5 */
 #magic-items-zone .zone-cards {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 5px;
-    width: 300px;
+    width: 380px;
 }
 
 /* Scrolls grid - 4 rows of 2 */
@@ -346,6 +359,11 @@ body.debug-collapsed {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 5px;
+}
+
+#scrolls-zone .card-slot.empty {
+    width: 70px;
+    height: 45px;
 }
 
 /* Deck display */
@@ -458,26 +476,26 @@ body.debug-collapsed {
     margin-bottom: 15px;
 }
 
-/* State selector dropdown */
-#state-selector {
-    width: 100%;
-    padding: 8px;
-    background-color: #1a1a2e;
-    color: #eee;
-    border: 1px solid #444;
-    border-radius: 4px;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-#state-selector:hover,
 #new-game-players:hover,
 #view-as-player:hover {
     border-color: #666;
 }
 
+.debug-section label {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+    margin-top: 8px;
+}
+
+.debug-section label:first-of-type {
+    margin-top: 0;
+}
+
 #new-game-players,
-#view-as-player {
+#view-as-player,
+#play-as-player {
     width: 100%;
     padding: 8px;
     background-color: #1a1a2e;
@@ -521,6 +539,34 @@ body.debug-collapsed {
     border-radius: 4px;
     max-height: 300px;
     overflow-y: auto;
+}
+
+/* Draft mode - hide player details, show only labels and first player marker */
+.player-area.draft-mode .player-board,
+.player-area.draft-mode .hand-area,
+.player-area.draft-mode .player-resources {
+    display: none;
+}
+
+.player-area.draft-mode {
+    padding: 8px 10px;
+}
+
+.player-area.draft-mode .player-info-bar {
+    margin-bottom: 0;
+}
+
+#opponents-container.draft-mode .player-board,
+#opponents-container.draft-mode .player-resources {
+    display: none;
+}
+
+#opponents-container.draft-mode .player-area {
+    padding: 8px 10px;
+}
+
+#opponents-container.draft-mode .player-info-bar {
+    margin-bottom: 0;
 }
 
 /* Draft section (top of page during draft phases) */

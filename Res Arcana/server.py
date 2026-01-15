@@ -236,6 +236,17 @@ def magic_item_select():
     if not player_takes_magic_item(current_game, player_id, item):
         return jsonify({'error': 'Cannot take that magic item'}), 400
 
+    # For single-player testing, auto-pick for other players
+    # Keep picking until it's the original player's turn again or game moves to PLAYING
+    while (current_game.phase == GamePhase.MAGIC_ITEM_SELECTION and
+           current_game.draft_state and
+           current_game.draft_state.magic_item_selector != player_id and
+           current_game.available_magic_items):
+        next_selector = current_game.draft_state.magic_item_selector
+        # Pick first available item for this player
+        next_item = current_game.available_magic_items[0]
+        player_takes_magic_item(current_game, next_selector, next_item)
+
     return jsonify(game_state_to_dict(current_game))
 
 
