@@ -156,9 +156,7 @@ body.debug-collapsed {
     font-weight: bold;
     text-align: center;
     margin-bottom: 5px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: break-word;
 }
 
 .card-type {
