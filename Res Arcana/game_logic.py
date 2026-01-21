@@ -1,11 +1,11 @@
-"""Game logic for Res Arcana setup and drafting."""
+"""Game logic for Res Arcana setup, drafting, and gameplay."""
 
 import random
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from game_state import (
     Card, CardType, ControlledCard, DraftState, GamePhase,
-    GameState, PlayerState, ResourceType
+    GameState, PlayerState, ResourceType, IncomePhaseState
 )
 from cards import (
     ARTIFACTS, MAGES, MONUMENTS, MAGIC_ITEMS, SCROLLS,
@@ -320,3 +320,264 @@ def advance_draft(game: GameState) -> None:
             start_mage_selection(game)
     else:
         pass_cards(game)
+
+
+# ============================================================
+# Income Phase
+# ============================================================
+
+def start_income_phase(game: GameState) -> None:
+    """Begin the income phase: untap all cards, flip first player token, init state."""
+    # Untap all cards for all players
+    for player in game.players:
+        for cc in player.all_controlled_cards():
+            cc.tapped = False
+
+    # Flip first player token face up
+    first = game.first_player()
+    if first:
+        first.first_player_token_face_up = True
+
+    # Initialize income state
+    game.income_state = IncomePhaseState()
+    for player in game.players:
+        pid = player.player_id
+        game.income_state.finalized[pid] = False
+        game.income_state.waiting_for_earlier[pid] = False
+        game.income_state.collection_choices[pid] = {}
+        game.income_state.income_choices[pid] = {}
+        game.income_state.auto_skip_places_of_power[pid] = True  # Default: skip PoP
+
+    game.phase = GamePhase.INCOME
+
+
+def get_cards_with_stored_resources(player: PlayerState) -> List[ControlledCard]:
+    """Get all controlled cards that have resources stored on them."""
+    cards_with_resources = []
+    for cc in player.all_controlled_cards():
+        if cc.card.name and any(count > 0 for count in cc.resources.values()):
+            cards_with_resources.append(cc)
+    return cards_with_resources
+
+
+def get_cards_with_income(player: PlayerState) -> List[ControlledCard]:
+    """Get all controlled cards that have income effects."""
+    cards_with_income = []
+    for cc in player.all_controlled_cards():
+        if cc.card.name and cc.card.effects and cc.card.effects.income:
+            cards_with_income.append(cc)
+    return cards_with_income
+
+
+def get_cards_needing_income_choice(player: PlayerState) -> List[ControlledCard]:
+    """Get cards that require a player choice for income (multiple types to choose from)."""
+    cards_needing_choice = []
+    for cc in player.all_controlled_cards():
+        if cc.card.name and cc.card.effects and cc.card.effects.income:
+            income = cc.card.effects.income
+            # Need choice if there are multiple types to choose from
+            if len(income.types) > 1:
+                cards_needing_choice.append(cc)
+    return cards_needing_choice
+
+
+def set_collection_choice(game: GameState, player_id: int, card_name: str, take_all: bool) -> bool:
+    """Set whether player will take all resources from a card.
+
+    Returns True if successful.
+    """
+    if game.phase != GamePhase.INCOME:
+        return False
+
+    income_state = game.income_state
+    if income_state.finalized[player_id]:
+        return False  # Already finalized
+
+    # Verify card exists and has resources
+    player = game.get_player(player_id)
+    for cc in player.all_controlled_cards():
+        if cc.card.name == card_name:
+            income_state.collection_choices[player_id][card_name] = take_all
+            return True
+
+    return False
+
+
+def set_income_choice(game: GameState, player_id: int, card_name: str,
+                      resources: Dict[str, int]) -> bool:
+    """Set the income choice for a card with multiple type options.
+
+    resources is a dict like {'black': 1} or {'red': 1, 'blue': 1}
+    Returns True if successful.
+    """
+    if game.phase != GamePhase.INCOME:
+        return False
+
+    income_state = game.income_state
+    if income_state.finalized[player_id]:
+        return False
+
+    # Verify card exists and has income effect requiring choice
+    player = game.get_player(player_id)
+    for cc in player.all_controlled_cards():
+        if cc.card.name == card_name:
+            if cc.card.effects and cc.card.effects.income:
+                income = cc.card.effects.income
+                # Validate: all chosen types are allowed
+                if not all(t in income.types for t in resources.keys()):
+                    return False
+                # Validate: total count matches
+                total = sum(resources.values())
+                if total != income.count:
+                    return False
+                income_state.income_choices[player_id][card_name] = resources
+                return True
+    return False
+
+
+def set_auto_skip_places_of_power(game: GameState, player_id: int, auto_skip: bool) -> bool:
+    """Set the player's preference for auto-skipping Places of Power resource collection."""
+    if game.phase != GamePhase.INCOME:
+        return False
+
+    game.income_state.auto_skip_places_of_power[player_id] = auto_skip
+    return True
+
+
+def player_waits_for_earlier(game: GameState, player_id: int) -> bool:
+    """Player chooses to wait for all earlier players in turn order to finalize.
+
+    Returns True if successful. First player cannot wait.
+    """
+    if game.phase != GamePhase.INCOME:
+        return False
+
+    income_state = game.income_state
+    if income_state.finalized[player_id]:
+        return False
+
+    # First player cannot wait
+    player = game.get_player(player_id)
+    if player.has_first_player_token:
+        return False
+
+    income_state.waiting_for_earlier[player_id] = True
+    return True
+
+
+def get_turn_order(game: GameState) -> List[int]:
+    """Get player IDs in turn order (starting from first player, clockwise)."""
+    first_player_id = None
+    for player in game.players:
+        if player.has_first_player_token:
+            first_player_id = player.player_id
+            break
+
+    num_players = len(game.players)
+    return [(first_player_id + i) % num_players for i in range(num_players)]
+
+
+def can_player_finalize(game: GameState, player_id: int) -> bool:
+    """Check if player can finalize (not blocked by waiting for earlier players)."""
+    if game.phase != GamePhase.INCOME:
+        return False
+
+    income_state = game.income_state
+    if income_state.finalized[player_id]:
+        return False
+
+    # If not waiting, can always finalize
+    if not income_state.waiting_for_earlier[player_id]:
+        return True
+
+    # If waiting, check all earlier players have finalized
+    turn_order = get_turn_order(game)
+    for pid in turn_order:
+        if pid == player_id:
+            break  # Reached self, all earlier players are done
+        if not income_state.finalized[pid]:
+            return False  # Earlier player not finalized yet
+
+    return True
+
+
+def player_finalizes_income(game: GameState, player_id: int) -> bool:
+    """Player finalizes their income choices.
+
+    Returns True if successful.
+    """
+    if not can_player_finalize(game, player_id):
+        return False
+
+    game.income_state.finalized[player_id] = True
+
+    # Check if all players are done
+    if all_income_finalized(game):
+        apply_income_and_advance(game)
+
+    return True
+
+
+def all_income_finalized(game: GameState) -> bool:
+    """Check if all players have finalized their income choices."""
+    if game.phase != GamePhase.INCOME or not game.income_state:
+        return False
+
+    return all(game.income_state.finalized[p.player_id] for p in game.players)
+
+
+def apply_income_and_advance(game: GameState) -> None:
+    """Apply all income choices and move to the action phase."""
+    income_state = game.income_state
+
+    for player in game.players:
+        pid = player.player_id
+
+        # Apply resource collection choices
+        for cc in player.all_controlled_cards():
+            card_name = cc.card.name
+            if not card_name:
+                continue
+
+            # Check if player chose to take resources from this card
+            take_all = income_state.collection_choices[pid].get(card_name, False)
+
+            # Auto-skip Places of Power if preference is set
+            if cc.card.card_type == CardType.PLACE_OF_POWER:
+                if income_state.auto_skip_places_of_power[pid]:
+                    take_all = False
+
+            if take_all:
+                # Move all resources from card to player
+                for res_type, count in list(cc.resources.items()):
+                    if count > 0:
+                        player.add_resource(res_type, count)
+                        cc.resources[res_type] = 0
+
+        # Apply income generation
+        for cc in player.all_controlled_cards():
+            card_name = cc.card.name
+            if not card_name or not cc.card.effects or not cc.card.effects.income:
+                continue
+
+            income = cc.card.effects.income
+
+            if len(income.types) == 1:
+                # Fixed income: gain count of the single type
+                res_type = ResourceType(income.types[0])
+                player.add_resource(res_type, income.count)
+            else:
+                # Multiple types: use player's choice (default to first type if not set)
+                chosen = income_state.income_choices[pid].get(card_name)
+                if chosen:
+                    for res_str, count in chosen.items():
+                        res_type = ResourceType(res_str)
+                        player.add_resource(res_type, count)
+                else:
+                    # Default to first type
+                    res_type = ResourceType(income.types[0])
+                    player.add_resource(res_type, income.count)
+
+    # Clear income state and advance to action phase
+    game.income_state = None
+    game.phase = GamePhase.PLAYING

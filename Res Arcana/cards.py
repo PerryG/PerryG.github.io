@@ -1,10 +1,25 @@
 """Card definitions for Res Arcana."""
 
-from game_state import Card, CardType
+from game_state import Card, CardType, CardEffects, IncomeEffect
+
+# Helper function to create income effects
+def income(count: int, *types: str) -> CardEffects:
+    """Create an income effect.
+
+    Examples:
+        income(1, 'green')           → gain 1 green (fixed)
+        income(1, 'black', 'green')  → gain 1 black OR green
+        income(2, 'red', 'blue')     → gain 2 from red/blue in any combination
+        income(3, 'red', 'blue', 'green', 'black')  → gain 3 of any non-gold
+    """
+    return CardEffects(income=IncomeEffect(count=count, types=list(types)))
+
 
 # Artifacts - 52 total (40 base game + 12 expansion)
+# Note: Most cards have placeholder None effects - will be filled in as we implement features
 ARTIFACTS = [
-    Card("Athanor", CardType.ARTIFACT),
+    # Athanor: gain 1 gold (placeholder - actual card may differ)
+    Card("Athanor", CardType.ARTIFACT, effects=income(1, 'gold')),
     Card("Bone Dragon", CardType.ARTIFACT),
     Card("Celestial Horse", CardType.ARTIFACT),
     Card("Chalice of Fire", CardType.ARTIFACT),
@@ -27,14 +42,16 @@ ARTIFACTS = [
     Card("Guard Dog", CardType.ARTIFACT),
     Card("Hand of Glory", CardType.ARTIFACT),
     Card("Hawk", CardType.ARTIFACT),
-    Card("Horn of Plenty", CardType.ARTIFACT),
+    # Horn of Plenty: gain any 1 non-gold (placeholder - actual card may differ)
+    Card("Horn of Plenty", CardType.ARTIFACT, effects=income(1, 'red', 'blue', 'green', 'black')),
     Card("Hypnotic Basin", CardType.ARTIFACT),
     Card("Jeweled Statuette", CardType.ARTIFACT),
     Card("Magical Shard", CardType.ARTIFACT),
     Card("Mermaid", CardType.ARTIFACT),
     Card("Nightingale", CardType.ARTIFACT),
     Card("Philosopher's Stone", CardType.ARTIFACT),
-    Card("Prism", CardType.ARTIFACT),
+    # Prism: gain blue OR green (placeholder - actual card may differ)
+    Card("Prism", CardType.ARTIFACT, effects=income(1, 'blue', 'green')),
     Card("Ring of Midas", CardType.ARTIFACT),
     Card("Sacrificial Dagger", CardType.ARTIFACT),
     Card("Sea Serpent", CardType.ARTIFACT),
@@ -59,8 +76,10 @@ ARTIFACTS = [
 ]
 
 # Mages - 14 total (10 in base game + 4 in expansion, but we include all)
+# Note: Most mages have placeholder None effects - will be filled in as we implement features
 MAGES = [
-    Card("Alchemist", CardType.MAGE),
+    # Alchemist: gain 1 gold (placeholder - actual card may differ)
+    Card("Alchemist", CardType.MAGE, effects=income(1, 'gold')),
     Card("Artificer", CardType.MAGE),
     Card("Bard", CardType.MAGE),
     Card("Beastmaster", CardType.MAGE),
@@ -97,8 +116,8 @@ MONUMENTS = [
 # Magic Items - 10 total
 MAGIC_ITEMS = [
     Card("Alchemy", CardType.MAGIC_ITEM),
-    Card("Calm | Elan", CardType.MAGIC_ITEM),
-    Card("Death | Life", CardType.MAGIC_ITEM),
+    Card("Calm | Elan", CardType.MAGIC_ITEM, effects=income(1, 'blue', 'red')),
+    Card("Death | Life", CardType.MAGIC_ITEM, effects=income(1, 'green', 'black')),
     Card("Divination", CardType.MAGIC_ITEM),
     Card("Protection", CardType.MAGIC_ITEM),
     Card("Reanimate", CardType.MAGIC_ITEM),

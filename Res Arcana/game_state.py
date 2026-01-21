@@ -18,8 +18,9 @@ class GamePhase(Enum):
     DRAFTING_ROUND_2 = "drafting_round_2"    # Pick 1, pass 3 counter-clockwise
     MAGE_SELECTION = "mage_selection"        # Secretly pick 1 of 2 mages
     MAGIC_ITEM_SELECTION = "magic_item_selection"  # Take magic item in reverse order
-    # Gameplay
-    PLAYING = "playing"
+    # Gameplay phases
+    INCOME = "income"                        # Collect income at start of round
+    PLAYING = "playing"                      # Main action phase
 
 
 class CardType(Enum):
@@ -32,10 +33,34 @@ class CardType(Enum):
 
 
 @dataclass
+class IncomeEffect:
+    """Represents income a card can generate each round.
+
+    count: How many resources to gain
+    types: Which resource types are allowed (e.g., ['green'], ['black', 'green'], etc.)
+
+    Examples:
+    - count=1, types=['green'] → gain 1 green (fixed)
+    - count=1, types=['black', 'green'] → gain 1 black OR green
+    - count=2, types=['green', 'blue', 'red'] → gain 2 from green/blue/red in any combination
+    - count=3, types=['red', 'blue', 'green', 'black'] → gain 3 of any non-gold
+    """
+    count: int
+    types: List[str]
+
+
+@dataclass
+class CardEffects:
+    """All effects a card can have. Expandable for future abilities."""
+    income: Optional[IncomeEffect] = None
+    # Future: tap_ability, reaction, cost, victory_points, etc.
+
+
+@dataclass
 class Card:
     name: str
     card_type: CardType
-    # Additional card-specific properties to be added later
+    effects: Optional[CardEffects] = None
 
 
 @dataclass
@@ -119,10 +144,26 @@ class DraftState:
 
 
 @dataclass
+class IncomePhaseState:
+    """Tracks state during the income phase."""
+    # Whether each player has finalized their income choices
+    finalized: Dict[int, bool] = field(default_factory=dict)
+    # Whether each player is waiting for earlier players to finalize first
+    waiting_for_earlier: Dict[int, bool] = field(default_factory=dict)
+    # Resource collection choices: player_id -> {card_name: take_all}
+    collection_choices: Dict[int, Dict[str, bool]] = field(default_factory=dict)
+    # Income choices for cards with options: player_id -> {card_name: {resource: count}}
+    income_choices: Dict[int, Dict[str, Dict[str, int]]] = field(default_factory=dict)
+    # Player preference: auto-skip taking resources from Places of Power
+    auto_skip_places_of_power: Dict[int, bool] = field(default_factory=dict)
+
+
+@dataclass
 class GameState:
     players: List[PlayerState]
     phase: GamePhase = GamePhase.SETUP
     draft_state: Optional[DraftState] = None
+    income_state: Optional[IncomePhaseState] = None
 
     # Shared zones
     available_monuments: List[Card] = field(default_factory=list)

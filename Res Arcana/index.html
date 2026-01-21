@@ -48,6 +48,48 @@
                 <p>Waiting for other players...</p>
             </div>
         </div>
+
+        <!-- Income section (shown during income phase) -->
+        <div id="income-section" class="hidden">
+            <h2 id="income-title">Income Phase</h2>
+            <p id="income-instructions"></p>
+
+            <!-- Cards with stored resources to collect -->
+            <div id="income-collection" class="hidden">
+                <div class="zone-label">Collect resources from cards (click to toggle):</div>
+                <div id="income-collection-cards" class="income-cards"></div>
+            </div>
+
+            <!-- Fixed income (informational) -->
+            <div id="income-fixed" class="hidden">
+                <div class="zone-label">Automatic income:</div>
+                <div id="income-fixed-cards" class="income-cards"></div>
+            </div>
+
+            <!-- Income choices -->
+            <div id="income-choices" class="hidden">
+                <div class="zone-label">Choose income:</div>
+                <div id="income-choice-cards" class="income-cards"></div>
+            </div>
+
+            <!-- Preferences -->
+            <div id="income-prefs">
+                <label>
+                    <input type="checkbox" id="auto-skip-pop" checked onchange="toggleAutoSkipPoP()">
+                    Auto-skip Places of Power resource collection
+                </label>
+            </div>
+
+            <!-- Action buttons -->
+            <div id="income-actions">
+                <button id="income-wait-btn" onclick="waitForEarlierPlayers()">Wait for Earlier Players</button>
+                <button id="income-finalize-btn" onclick="finalizeIncome()">Finalize</button>
+            </div>
+
+            <!-- Status -->
+            <div id="income-status"></div>
+        </div>
+
         <!-- Your area (top) -->
         <div id="player-area" class="player-area">
             <div class="area-label" id="player-label">Player 1 (You)</div>
@@ -130,6 +172,10 @@
                     <option value="0">Player 1</option>
                     <option value="1">Player 2</option>
                 </select>
+            </div>
+            <div class="debug-section">
+                <h3>Game Actions</h3>
+                <button onclick="startIncomePhase()">Start Income Phase</button>
             </div>
             <div class="debug-section">
                 <h3>Visible State (Player View)</h3>

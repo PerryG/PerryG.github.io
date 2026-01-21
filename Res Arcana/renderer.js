@@ -16,6 +16,7 @@ const GamePhase = {
     DRAFTING_ROUND_2: 'drafting_round_2',
     MAGE_SELECTION: 'mage_selection',
     MAGIC_ITEM_SELECTION: 'magic_item_selection',
+    INCOME: 'income',
     PLAYING: 'playing'
 };
 
@@ -65,6 +66,60 @@ async function apiMagicItemSelect(playerId, itemName) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId, itemName })
+    });
+    return response.json();
+}
+
+// Income phase API functions
+async function apiIncomeStart() {
+    const response = await fetch('/api/income/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    });
+    return response.json();
+}
+
+async function apiIncomeCollectionChoice(playerId, cardName, takeAll) {
+    const response = await fetch('/api/income/collection-choice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, cardName, takeAll })
+    });
+    return response.json();
+}
+
+async function apiIncomeIncomeChoice(playerId, cardName, resources) {
+    const response = await fetch('/api/income/income-choice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, cardName, resources })
+    });
+    return response.json();
+}
+
+async function apiIncomeToggleAutoSkipPoP(playerId, autoSkip) {
+    const response = await fetch('/api/income/toggle-auto-skip-pop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, autoSkip })
+    });
+    return response.json();
+}
+
+async function apiIncomeWait(playerId) {
+    const response = await fetch('/api/income/wait', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId })
+    });
+    return response.json();
+}
+
+async function apiIncomeFinalize(playerId) {
+    const response = await fetch('/api/income/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId })
     });
     return response.json();
 }
@@ -317,8 +372,16 @@ function renderDraftSection(gameState, viewingPlayerId) {
     const phase = gameState.phase;
     const draftState = gameState.draftState;
 
-    // Hide section during playing phase
-    if (phase === GamePhase.PLAYING || !phase) {
+    // Only show during draft-related phases
+    const draftPhases = [
+        GamePhase.SETUP,
+        GamePhase.DRAFTING_ROUND_1,
+        GamePhase.DRAFTING_ROUND_2,
+        GamePhase.MAGE_SELECTION,
+        GamePhase.MAGIC_ITEM_SELECTION
+    ];
+
+    if (!draftPhases.includes(phase)) {
         section.classList.add('hidden');
         return;
     }
@@ -544,6 +607,312 @@ async function selectMagicItem(itemIndex) {
 }
 
 // ============================================================
+// Income Phase Rendering
+// ============================================================
+
+/**
+ * Render the income section based on current game phase
+ */
+function renderIncomeSection(gameState, viewingPlayerId) {
+    const section = document.getElementById('income-section');
+    if (!section) return;
+
+    // Hide section if not in income phase
+    if (gameState.phase !== GamePhase.INCOME) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+
+    const incomeState = gameState.incomeState;
+    if (!incomeState) return;
+
+    const playerInfo = incomeState.cardsInfo?.[viewingPlayerId] || {};
+    const isFinalized = incomeState.finalized?.[viewingPlayerId] || false;
+    const isWaiting = incomeState.waitingForEarlier?.[viewingPlayerId] || false;
+    const collectionChoices = incomeState.collectionChoices?.[viewingPlayerId] || {};
+    const incomeChoices = incomeState.incomeChoices?.[viewingPlayerId] || {};
+    const autoSkipPoP = incomeState.autoSkipPlacesOfPower?.[viewingPlayerId] ?? true;
+
+    // Check if player is first player (can't wait)
+    const isFirstPlayer = gameState.players.find(p => p.playerId === viewingPlayerId)?.hasFirstPlayerToken;
+
+    // Title and instructions
+    const titleEl = document.getElementById('income-title');
+    const instructionsEl = document.getElementById('income-instructions');
+    titleEl.textContent = 'Income Phase';
+
+    if (isFinalized) {
+        instructionsEl.textContent = 'You have finalized. Waiting for other players...';
+    } else if (isWaiting) {
+        instructionsEl.textContent = 'Waiting for earlier players to finalize...';
+    } else {
+        instructionsEl.textContent = 'Collect resources from cards and choose income options.';
+    }
+
+    // Render cards with stored resources
+    const collectionDiv = document.getElementById('income-collection-cards');
+    const cardsWithResources = playerInfo.cardsWithResources || [];
+    if (cardsWithResources.length > 0) {
+        document.getElementById('income-collection').classList.remove('hidden');
+        collectionDiv.innerHTML = cardsWithResources.map(card => {
+            const willTake = collectionChoices[card.cardName] || false;
+            const isPoP = card.cardType === 'place_of_power';
+            const resourcesStr = Object.entries(card.resources)
+                .map(([type, count]) => `${count} ${type}`)
+                .join(', ');
+            return `
+                <div class="income-card-choice ${willTake ? 'selected' : ''} ${isFinalized ? 'disabled' : ''}"
+                     onclick="${isFinalized ? '' : `toggleCollectionChoice('${card.cardName}')`}">
+                    <div class="card-name">${card.cardName}</div>
+                    <div class="card-resources-text">${resourcesStr}</div>
+                    <div class="choice-status">${willTake ? 'TAKE' : 'LEAVE'}${isPoP && autoSkipPoP ? ' (auto-skip PoP)' : ''}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        document.getElementById('income-collection').classList.add('hidden');
+    }
+
+    // Render cards with fixed income (informational)
+    const fixedIncomeDiv = document.getElementById('income-fixed-cards');
+    const fixedIncomeCards = playerInfo.cardsWithFixedIncome || [];
+    if (fixedIncomeCards.length > 0) {
+        document.getElementById('income-fixed').classList.remove('hidden');
+        fixedIncomeDiv.innerHTML = fixedIncomeCards.map(card => {
+            return `
+                <div class="income-card-info">
+                    <div class="card-name">${card.cardName}</div>
+                    <div class="income-gain">+${card.count} ${card.type}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        document.getElementById('income-fixed').classList.add('hidden');
+    }
+
+    // Render cards needing income choice
+    const choicesDiv = document.getElementById('income-choice-cards');
+    const cardsNeedingChoice = playerInfo.cardsNeedingChoice || [];
+    if (cardsNeedingChoice.length > 0) {
+        document.getElementById('income-choices').classList.remove('hidden');
+        choicesDiv.innerHTML = cardsNeedingChoice.map(card => {
+            const currentChoice = incomeChoices[card.cardName];
+            let optionsHtml = '';
+
+            if (card.count === 1) {
+                // Simple choice: pick one type
+                optionsHtml = card.types.map(type => {
+                    const opt = { [type]: 1 };
+                    const isSelected = JSON.stringify(currentChoice) === JSON.stringify(opt);
+                    return `
+                        <button class="income-option ${isSelected ? 'selected' : ''}"
+                                onclick="selectIncomeOption('${card.cardName}', '${type}', 1)"
+                                ${isFinalized ? 'disabled' : ''}>
+                            1 ${type}
+                        </button>
+                    `;
+                }).join(' ');
+            } else {
+                // Multi-resource choice: pick count resources from types
+                // For simplicity, show single-type options (e.g., "2 red", "2 blue")
+                // TODO: Add UI for mixed allocations (e.g., "1 red + 1 blue")
+                optionsHtml = card.types.map(type => {
+                    const opt = { [type]: card.count };
+                    const isSelected = JSON.stringify(currentChoice) === JSON.stringify(opt);
+                    return `
+                        <button class="income-option ${isSelected ? 'selected' : ''}"
+                                onclick="selectIncomeOption('${card.cardName}', '${type}', ${card.count})"
+                                ${isFinalized ? 'disabled' : ''}>
+                            ${card.count} ${type}
+                        </button>
+                    `;
+                }).join(' ');
+            }
+
+            return `
+                <div class="income-card-choice">
+                    <div class="card-name">${card.cardName}</div>
+                    <div class="income-options">${optionsHtml}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        document.getElementById('income-choices').classList.add('hidden');
+    }
+
+    // Update auto-skip checkbox
+    const autoSkipCheckbox = document.getElementById('auto-skip-pop');
+    if (autoSkipCheckbox) {
+        autoSkipCheckbox.checked = autoSkipPoP;
+        autoSkipCheckbox.disabled = isFinalized;
+    }
+
+    // Update action buttons
+    const waitBtn = document.getElementById('income-wait-btn');
+    const finalizeBtn = document.getElementById('income-finalize-btn');
+
+    if (waitBtn) {
+        waitBtn.disabled = isFinalized || isWaiting || isFirstPlayer;
+        if (isFirstPlayer) {
+            waitBtn.title = 'First player cannot wait';
+        }
+    }
+
+    if (finalizeBtn) {
+        // Check if can finalize (not waiting for others)
+        let canFinalize = !isFinalized;
+        if (isWaiting) {
+            // Check if all earlier players have finalized
+            const turnOrder = getTurnOrder(gameState);
+            for (const pid of turnOrder) {
+                if (pid === viewingPlayerId) break;
+                if (!incomeState.finalized?.[pid]) {
+                    canFinalize = false;
+                    break;
+                }
+            }
+        }
+        finalizeBtn.disabled = !canFinalize;
+    }
+
+    // Show finalization status
+    const statusDiv = document.getElementById('income-status');
+    if (statusDiv) {
+        const statusHtml = gameState.players.map(p => {
+            const finalized = incomeState.finalized?.[p.playerId];
+            const waiting = incomeState.waitingForEarlier?.[p.playerId];
+            let status = finalized ? 'Done' : (waiting ? 'Waiting...' : 'Choosing...');
+            return `<span class="player-status ${finalized ? 'done' : ''}">P${p.playerId + 1}: ${status}</span>`;
+        }).join(' | ');
+        statusDiv.innerHTML = statusHtml;
+    }
+}
+
+/**
+ * Get turn order starting from first player
+ */
+function getTurnOrder(gameState) {
+    const firstPlayerId = gameState.players.find(p => p.hasFirstPlayerToken)?.playerId || 0;
+    const numPlayers = gameState.players.length;
+    const order = [];
+    for (let i = 0; i < numPlayers; i++) {
+        order.push((firstPlayerId + i) % numPlayers);
+    }
+    return order;
+}
+
+// ============================================================
+// Income Interaction Handlers
+// ============================================================
+
+/**
+ * Toggle collection choice for a card
+ */
+async function toggleCollectionChoice(cardName) {
+    if (!currentGameState || !currentGameState.incomeState) return;
+
+    const current = currentGameState.incomeState.collectionChoices?.[currentViewingPlayer]?.[cardName] || false;
+    const state = await apiIncomeCollectionChoice(currentViewingPlayer, cardName, !current);
+
+    if (state.error) {
+        console.error('Error setting collection choice:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Select income option for a card
+ */
+async function selectIncomeOption(cardName, type, count) {
+    if (!currentGameState || !currentGameState.incomeState) return;
+
+    const resources = { [type]: count };
+    const state = await apiIncomeIncomeChoice(currentViewingPlayer, cardName, resources);
+
+    if (state.error) {
+        console.error('Error setting income choice:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Toggle auto-skip Places of Power preference
+ */
+async function toggleAutoSkipPoP() {
+    if (!currentGameState || !currentGameState.incomeState) return;
+
+    const current = currentGameState.incomeState.autoSkipPlacesOfPower?.[currentViewingPlayer] ?? true;
+    const state = await apiIncomeToggleAutoSkipPoP(currentViewingPlayer, !current);
+
+    if (state.error) {
+        console.error('Error toggling auto-skip:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Wait for earlier players to finalize
+ */
+async function waitForEarlierPlayers() {
+    if (!currentGameState) return;
+
+    const state = await apiIncomeWait(currentViewingPlayer);
+
+    if (state.error) {
+        console.error('Error waiting:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Finalize income choices
+ */
+async function finalizeIncome() {
+    if (!currentGameState) return;
+
+    const state = await apiIncomeFinalize(currentViewingPlayer);
+
+    if (state.error) {
+        console.error('Error finalizing:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Start the income phase (for testing)
+ */
+async function startIncomePhase() {
+    if (!currentGameState) return;
+
+    const state = await apiIncomeStart();
+
+    if (state.error) {
+        console.error('Error starting income phase:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+// ============================================================
 // Main Render Function (Updated)
 // ============================================================
 
@@ -563,6 +932,9 @@ function renderGame(gameState, viewingPlayerId) {
 
     // Render draft section if in draft phase
     renderDraftSection(gameState, viewingPlayerId);
+
+    // Render income section if in income phase
+    renderIncomeSection(gameState, viewingPlayerId);
 
     // Update the View As dropdown to match player count
     updateViewAsDropdown(gameState.players.length);

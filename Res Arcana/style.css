@@ -649,3 +649,213 @@ body.debug-collapsed {
 .hidden {
     display: none !important;
 }
+
+/* ============================================================
+   Income Phase Styles
+   ============================================================ */
+
+#income-section {
+    background-color: #16213e;
+    border: 2px solid #f39c12;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+#income-title {
+    margin: 0 0 10px 0;
+    color: #f39c12;
+    font-size: 20px;
+}
+
+#income-instructions {
+    color: #888;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.income-cards {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+/* Card choice items in income phase */
+.income-card-choice {
+    background-color: #1a1a2e;
+    border: 2px solid #444;
+    border-radius: 6px;
+    padding: 10px;
+    min-width: 120px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.income-card-choice:hover:not(.disabled) {
+    border-color: #f39c12;
+}
+
+.income-card-choice.selected {
+    border-color: #4ecca3;
+    background-color: rgba(78, 204, 163, 0.1);
+}
+
+.income-card-choice.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.income-card-choice .card-name {
+    font-weight: bold;
+    color: #e0e0e0;
+    margin-bottom: 5px;
+}
+
+.income-card-choice .card-resources-text {
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 5px;
+}
+
+.income-card-choice .choice-status {
+    font-size: 11px;
+    font-weight: bold;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.income-card-choice.selected .choice-status {
+    color: #4ecca3;
+}
+
+/* Fixed income info cards */
+.income-card-info {
+    background-color: #1a1a2e;
+    border: 2px solid #333;
+    border-radius: 6px;
+    padding: 10px;
+    min-width: 100px;
+    text-align: center;
+}
+
+.income-card-info .card-name {
+    font-weight: bold;
+    color: #e0e0e0;
+    margin-bottom: 5px;
+}
+
+.income-card-info .income-gain {
+    color: #4ecca3;
+    font-size: 12px;
+}
+
+/* Income options (choice buttons) */
+.income-options {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.income-option {
+    background-color: #2d2d44;
+    border: 2px solid #444;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #e0e0e0;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.income-option:hover:not(:disabled) {
+    border-color: #f39c12;
+    background-color: #3d3d54;
+}
+
+.income-option.selected {
+    border-color: #4ecca3;
+    background-color: rgba(78, 204, 163, 0.2);
+}
+
+.income-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Preferences section */
+#income-prefs {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #1a1a2e;
+    border-radius: 4px;
+}
+
+#income-prefs label {
+    color: #aaa;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#income-prefs input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+/* Action buttons */
+#income-actions {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+#income-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#income-wait-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+#income-wait-btn:hover:not(:disabled) {
+    background-color: #5a6268;
+}
+
+#income-finalize-btn {
+    background-color: #4ecca3;
+    color: #1a1a2e;
+    font-weight: bold;
+}
+
+#income-finalize-btn:hover:not(:disabled) {
+    background-color: #3dbb92;
+}
+
+#income-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Status display */
+#income-status {
+    padding: 10px;
+    background-color: #1a1a2e;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.player-status {
+    color: #888;
+}
+
+.player-status.done {
+    color: #4ecca3;
+}

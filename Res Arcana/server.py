@@ -10,7 +10,13 @@ from game_logic import (
     all_players_have_picked, pass_cards, is_draft_round_complete,
     start_draft_round_2, start_mage_selection, player_selects_mage,
     all_mages_selected, reveal_mages_and_start_magic_items,
-    player_takes_magic_item
+    player_takes_magic_item,
+    # Income phase
+    start_income_phase, set_collection_choice, set_income_choice,
+    set_auto_skip_places_of_power, player_waits_for_earlier,
+    player_finalizes_income, can_player_finalize,
+    get_cards_with_stored_resources, get_cards_with_income,
+    get_cards_needing_income_choice
 )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
@@ -21,10 +27,23 @@ current_game: GameState = None
 
 def card_to_dict(card: Card) -> dict:
     """Convert a Card to a JSON-serializable dict."""
-    return {
+    result = {
         'name': card.name,
         'cardType': card.card_type.value
     }
+
+    # Include effects if present
+    if card.effects:
+        effects = {}
+        if card.effects.income:
+            income = card.effects.income
+            effects['income'] = {
+                'count': income.count,
+                'types': income.types
+            }
+        result['effects'] = effects
+
+    return result
 
 
 def controlled_card_to_dict(cc) -> dict:
@@ -81,12 +100,70 @@ def draft_state_to_dict(draft_state) -> dict:
     }
 
 
+def income_state_to_dict(income_state, game: GameState) -> dict:
+    """Convert IncomePhaseState to a JSON-serializable dict."""
+    if income_state is None:
+        return None
+
+    # Build info about cards needing choices for each player
+    cards_info = {}
+    for player in game.players:
+        pid = player.player_id
+        # Cards with resources that can be collected
+        cards_with_resources = []
+        for cc in get_cards_with_stored_resources(player):
+            cards_with_resources.append({
+                'cardName': cc.card.name,
+                'cardType': cc.card.card_type.value,
+                'resources': {k.value: v for k, v in cc.resources.items() if v > 0}
+            })
+
+        # Cards with income that need choices (multiple types)
+        cards_needing_choice = []
+        for cc in get_cards_needing_income_choice(player):
+            income = cc.card.effects.income
+            cards_needing_choice.append({
+                'cardName': cc.card.name,
+                'cardType': cc.card.card_type.value,
+                'count': income.count,
+                'types': income.types
+            })
+
+        # Cards with fixed income (single type, no choice needed)
+        cards_with_fixed_income = []
+        for cc in get_cards_with_income(player):
+            income = cc.card.effects.income
+            if len(income.types) == 1:
+                cards_with_fixed_income.append({
+                    'cardName': cc.card.name,
+                    'cardType': cc.card.card_type.value,
+                    'count': income.count,
+                    'type': income.types[0]
+                })
+
+        cards_info[str(pid)] = {
+            'cardsWithResources': cards_with_resources,
+            'cardsNeedingChoice': cards_needing_choice,
+            'cardsWithFixedIncome': cards_with_fixed_income
+        }
+
+    return {
+        'finalized': {str(k): v for k, v in income_state.finalized.items()},
+        'waitingForEarlier': {str(k): v for k, v in income_state.waiting_for_earlier.items()},
+        'collectionChoices': {str(k): v for k, v in income_state.collection_choices.items()},
+        'incomeChoices': {str(k): v for k, v in income_state.income_choices.items()},
+        'autoSkipPlacesOfPower': {str(k): v for k, v in income_state.auto_skip_places_of_power.items()},
+        'cardsInfo': cards_info
+    }
+
+
 def game_state_to_dict(game: GameState) -> dict:
     """Convert GameState to a JSON-serializable dict."""
     return {
         'phase': game.phase.value if game.phase else None,
         'players': [player_to_dict(p) for p in game.players],
         'draftState': draft_state_to_dict(game.draft_state),
+        'incomeState': income_state_to_dict(game.income_state, game),
         'availableMonuments': [card_to_dict(c) for c in game.available_monuments],
         'availablePlacesOfPower': [card_to_dict(c) for c in game.available_places_of_power],
         'availableMagicItems': [card_to_dict(c) for c in game.available_magic_items],
@@ -246,6 +323,134 @@ def magic_item_select():
         # Pick first available item for this player
         next_item = current_game.available_magic_items[0]
         player_takes_magic_item(current_game, next_selector, next_item)
+
+    return jsonify(game_state_to_dict(current_game))
+
+
+# Income phase endpoints
+
+@app.route('/api/income/start', methods=['POST'])
+def income_start():
+    """Start the income phase (typically called at start of each round)."""
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    if current_game.phase != GamePhase.PLAYING:
+        return jsonify({'error': 'Can only start income from playing phase'}), 400
+
+    start_income_phase(current_game)
+    return jsonify(game_state_to_dict(current_game))
+
+
+@app.route('/api/income/collection-choice', methods=['POST'])
+def income_collection_choice():
+    """Set whether to collect resources from a card.
+
+    Body: {playerId, cardName, takeAll: bool}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    card_name = data.get('cardName')
+    take_all = data.get('takeAll', False)
+
+    if not set_collection_choice(current_game, player_id, card_name, take_all):
+        return jsonify({'error': 'Cannot set collection choice'}), 400
+
+    return jsonify(game_state_to_dict(current_game))
+
+
+@app.route('/api/income/income-choice', methods=['POST'])
+def income_income_choice():
+    """Set income choice for a card with options.
+
+    Body: {playerId, cardName, resources: {red: 1, ...}}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    card_name = data.get('cardName')
+    resources = data.get('resources', {})
+
+    if not set_income_choice(current_game, player_id, card_name, resources):
+        return jsonify({'error': 'Cannot set income choice'}), 400
+
+    return jsonify(game_state_to_dict(current_game))
+
+
+@app.route('/api/income/toggle-auto-skip-pop', methods=['POST'])
+def income_toggle_auto_skip():
+    """Toggle auto-skip Places of Power preference.
+
+    Body: {playerId, autoSkip: bool}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    auto_skip = data.get('autoSkip', True)
+
+    if not set_auto_skip_places_of_power(current_game, player_id, auto_skip):
+        return jsonify({'error': 'Cannot set preference'}), 400
+
+    return jsonify(game_state_to_dict(current_game))
+
+
+@app.route('/api/income/wait', methods=['POST'])
+def income_wait():
+    """Player waits for earlier players to finalize.
+
+    Body: {playerId}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+
+    if not player_waits_for_earlier(current_game, player_id):
+        return jsonify({'error': 'Cannot wait (maybe first player or already finalized)'}), 400
+
+    return jsonify(game_state_to_dict(current_game))
+
+
+@app.route('/api/income/finalize', methods=['POST'])
+def income_finalize():
+    """Finalize income choices.
+
+    Body: {playerId}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+
+    if not player_finalizes_income(current_game, player_id):
+        return jsonify({'error': 'Cannot finalize (maybe waiting for earlier players)'}), 400
+
+    # For single-player testing, auto-finalize other players
+    for pid in range(len(current_game.players)):
+        if pid != player_id and current_game.phase == GamePhase.INCOME:
+            if can_player_finalize(current_game, pid):
+                player_finalizes_income(current_game, pid)
 
     return jsonify(game_state_to_dict(current_game))
 
