@@ -28,18 +28,24 @@ let currentViewingPlayer = 0;
 // API Functions
 // ============================================================
 
-async function apiNewGame(numPlayers = 2) {
+async function apiNewGame(numPlayers = 2, humanPlayerId = 0) {
     const response = await fetch('/api/new-game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ numPlayers })
+        body: JSON.stringify({ numPlayers, humanPlayerId })
     });
     return response.json();
 }
 
-async function apiGetState() {
-    const response = await fetch('/api/state');
+async function apiGetState(playerId) {
+    const response = await fetch(`/api/state?playerId=${playerId}`);
     if (response.status === 404) return null;
+    return response.json();
+}
+
+async function apiGetFullState() {
+    const response = await fetch('/api/state/full');
+    if (response.status === 404 || response.status === 403) return null;
     return response.json();
 }
 
@@ -71,10 +77,11 @@ async function apiMagicItemSelect(playerId, itemName) {
 }
 
 // Income phase API functions
-async function apiIncomeStart() {
+async function apiIncomeStart(playerId) {
     const response = await fetch('/api/income/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId })
     });
     return response.json();
 }
@@ -124,22 +131,19 @@ async function apiIncomeFinalize(playerId) {
     return response.json();
 }
 
-async function startNewGame(numPlayers = 2) {
-    const state = await apiNewGame(numPlayers);
+async function startNewGame(numPlayers = 2, humanPlayerId = 0) {
+    const state = await apiNewGame(numPlayers, humanPlayerId);
     if (state.error) {
         console.error('Error starting game:', state.error);
         return;
     }
     currentGameState = state;
-    // Keep viewing player from selector, but clamp to valid range
-    if (currentViewingPlayer >= numPlayers) {
-        currentViewingPlayer = 0;
-    }
+    currentViewingPlayer = humanPlayerId;
     renderGame(state, currentViewingPlayer);
 }
 
 async function loadCurrentGame() {
-    const state = await apiGetState();
+    const state = await apiGetState(currentViewingPlayer);
     if (state && !state.error) {
         currentGameState = state;
         renderGame(state, currentViewingPlayer);
@@ -901,7 +905,7 @@ async function finalizeIncome() {
 async function startIncomePhase() {
     if (!currentGameState) return;
 
-    const state = await apiIncomeStart();
+    const state = await apiIncomeStart(currentViewingPlayer);
 
     if (state.error) {
         console.error('Error starting income phase:', state.error);
@@ -923,6 +927,8 @@ function renderGame(gameState, viewingPlayerId) {
     // Store for interaction handlers
     currentGameState = gameState;
     currentViewingPlayer = viewingPlayerId;
+    // Update polling state to avoid duplicate renders
+    lastStateJson = JSON.stringify(gameState);
 
     // Phases where we hide player details (not magic item selection - mages are revealed then)
     const hidePlayerDetails = gameState.phase === GamePhase.SETUP ||
@@ -992,8 +998,21 @@ function renderGame(gameState, viewingPlayerId) {
     // Update debug panels
     document.getElementById('visible-state').textContent =
         JSON.stringify(visibleState, null, 2);
-    document.getElementById('full-state').textContent =
-        JSON.stringify(gameState, null, 2);
+    // Full state is fetched separately from debug endpoint
+    updateFullStateDebug();
+}
+
+/**
+ * Fetch and display full game state in debug panel
+ */
+async function updateFullStateDebug() {
+    const fullState = await apiGetFullState();
+    const el = document.getElementById('full-state');
+    if (fullState && !fullState.error) {
+        el.textContent = JSON.stringify(fullState, null, 2);
+    } else {
+        el.textContent = '(Debug endpoint disabled or no game)';
+    }
 }
 
 /**
@@ -1035,8 +1054,7 @@ function updatePlayAsOptions() {
 async function newGameFromUI() {
     const numPlayers = parseInt(document.getElementById('new-game-players').value, 10);
     const playAs = parseInt(document.getElementById('play-as-player').value, 10);
-    currentViewingPlayer = playAs;
-    await startNewGame(numPlayers);
+    await startNewGame(numPlayers, playAs);
 }
 
 /**
@@ -1064,6 +1082,53 @@ function updateViewAsDropdown(numPlayers) {
     dropdown.value = currentViewingPlayer;
 }
 
+// ============================================================
+// Polling System
+// ============================================================
+
+let pollingInterval = null;
+let lastStateJson = null;
+
+/**
+ * Start polling for game state updates
+ */
+function startPolling(intervalMs = 500) {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+
+    pollingInterval = setInterval(async () => {
+        try {
+            const state = await apiGetState(currentViewingPlayer);
+            if (!state || state.error) return;
+
+            // Only re-render if state has changed
+            const stateJson = JSON.stringify(state);
+            if (stateJson !== lastStateJson) {
+                lastStateJson = stateJson;
+                currentGameState = state;
+                renderGame(state, currentViewingPlayer);
+                console.log('State updated from poll');
+            }
+        } catch (e) {
+            // Server unavailable, ignore
+        }
+    }, intervalMs);
+
+    console.log(`Polling started (${intervalMs}ms interval)`);
+}
+
+/**
+ * Stop polling
+ */
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('Polling stopped');
+    }
+}
+
 // Initialize: try to load existing game, otherwise show welcome state
 document.addEventListener('DOMContentLoaded', async () => {
     const hasGame = await loadCurrentGame();
@@ -1073,4 +1138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // For convenience, auto-start a 2-player game
         await startNewGame(2);
     }
+
+    // Start polling for updates
+    startPolling(500);
 });

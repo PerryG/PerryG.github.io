@@ -133,6 +133,8 @@ class DraftState:
     """Tracks state during the drafting phase."""
     # Cards each player is currently choosing from (indexed by player_id)
     cards_to_pick: Dict[int, List[Card]] = field(default_factory=dict)
+    # Cards waiting to be passed to next player (after picking)
+    cards_to_pass: Dict[int, List[Card]] = field(default_factory=dict)
     # Cards each player has drafted so far
     drafted_cards: Dict[int, List[Card]] = field(default_factory=dict)
     # Mage options for each player (they pick 1 of 2)

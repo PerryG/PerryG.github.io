@@ -139,9 +139,15 @@ def player_picks_card(game: GameState, player_id: int, card: Card) -> bool:
     if card not in draft.cards_to_pick[player_id]:
         return False
 
-    # Move card from available to drafted
+    # Remove card and add to drafted
     draft.cards_to_pick[player_id].remove(card)
     draft.drafted_cards[player_id].append(card)
+
+    # Store remaining cards for passing, clear cards_to_pick
+    # (so player doesn't see them until passed back)
+    draft.cards_to_pass[player_id] = draft.cards_to_pick[player_id]
+    draft.cards_to_pick[player_id] = []
+
     return True
 
 
@@ -169,23 +175,23 @@ def pass_cards(game: GameState) -> None:
     # Determine pass direction
     clockwise = game.phase == GamePhase.DRAFTING_ROUND_1
 
-    # Collect all cards to pass
-    old_cards = {i: draft.cards_to_pick[i] for i in range(num_players)}
-
-    # Redistribute
+    # Redistribute cards_to_pass
     for i in range(num_players):
         if clockwise:
             source = (i - 1) % num_players  # Receive from previous player
         else:
             source = (i + 1) % num_players  # Receive from next player
-        draft.cards_to_pick[i] = old_cards[source]
+        draft.cards_to_pick[i] = draft.cards_to_pass.get(source, [])
+
+    # Clear cards_to_pass
+    draft.cards_to_pass = {}
 
 
 def is_draft_round_complete(game: GameState) -> bool:
     """Check if current draft round is complete (all cards drafted)."""
     draft = game.draft_state
-    # Round complete when no one has cards left to pick
-    return all(len(draft.cards_to_pick[i]) == 0 for i in range(len(game.players)))
+    # Round complete when no one has cards left to pass
+    return all(len(draft.cards_to_pass.get(i, [])) == 0 for i in range(len(game.players)))
 
 
 def start_draft_round_2(game: GameState) -> None:
@@ -304,22 +310,6 @@ def setup_starting_hands(game: GameState) -> None:
     # Clear draft state and start game
     game.draft_state = None
     game.phase = GamePhase.PLAYING
-
-
-# High-level flow helpers
-
-def advance_draft(game: GameState) -> None:
-    """Advance the draft state after all players have picked."""
-    if not all_players_have_picked(game):
-        return
-
-    if is_draft_round_complete(game):
-        if game.phase == GamePhase.DRAFTING_ROUND_1:
-            start_draft_round_2(game)
-        else:
-            start_mage_selection(game)
-    else:
-        pass_cards(game)
 
 
 # ============================================================
