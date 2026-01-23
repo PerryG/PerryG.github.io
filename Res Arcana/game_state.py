@@ -53,7 +53,10 @@ class IncomeEffect:
 class CardEffects:
     """All effects a card can have. Expandable for future abilities."""
     income: Optional[IncomeEffect] = None
-    # Future: tap_ability, reaction, cost, victory_points, etc.
+    # Cost to play (dict of resource_type -> count, e.g. {'red': 2, 'black': 1})
+    # 'any' means any non-gold essence
+    cost: Optional[Dict[str, int]] = None
+    # Future: tap_ability, reaction, victory_points, etc.
 
 
 @dataclass
@@ -161,11 +164,21 @@ class IncomePhaseState:
 
 
 @dataclass
+class ActionPhaseState:
+    """Tracks state during the action (playing) phase."""
+    # Current player whose turn it is
+    current_player: int = 0
+    # Which players have passed this round
+    passed: Dict[int, bool] = field(default_factory=dict)
+
+
+@dataclass
 class GameState:
     players: List[PlayerState]
     phase: GamePhase = GamePhase.SETUP
     draft_state: Optional[DraftState] = None
     income_state: Optional[IncomePhaseState] = None
+    action_state: Optional[ActionPhaseState] = None
 
     # Shared zones
     available_monuments: List[Card] = field(default_factory=list)

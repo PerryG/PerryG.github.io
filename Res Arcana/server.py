@@ -17,7 +17,11 @@ from game_logic import (
     set_auto_skip_places_of_power, player_waits_for_earlier,
     player_finalizes_income,
     get_cards_with_stored_resources, get_cards_with_income,
-    get_cards_needing_income_choice
+    get_cards_needing_income_choice,
+    # Action phase
+    get_current_player, player_pass, player_play_card,
+    player_buy_place_of_power, player_buy_monument, player_discard_card,
+    can_afford_cost
 )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
@@ -82,6 +86,8 @@ def bot_take_action(player_id: int):
         bot_handle_magic_item_selection(game, player_id)
     elif phase == GamePhase.INCOME:
         bot_handle_income(game, player_id)
+    elif phase == GamePhase.PLAYING:
+        bot_handle_action(game, player_id)
 
 
 def bot_handle_draft(game: GameState, player_id: int):
@@ -187,6 +193,113 @@ def bot_handle_income(game: GameState, player_id: int):
     player_finalizes_income(game, player_id)
 
 
+def bot_handle_action(game: GameState, player_id: int):
+    """Bot handles action phase - takes actions when it's their turn."""
+    action = game.action_state
+    if not action:
+        return
+
+    # Not our turn?
+    if action.current_player != player_id:
+        return
+
+    # Already passed?
+    if action.passed.get(player_id, False):
+        return
+
+    player = game.get_player(player_id)
+
+    # Gather possible actions
+    possible_actions = []
+
+    # Check for playable cards in hand
+    playable_cards = []
+    for card in player.hand:
+        cost = card.effects.cost if card.effects else None
+        if cost is None or can_afford_cost(player, cost):
+            playable_cards.append(card)
+    if playable_cards:
+        possible_actions.append(('play_card', playable_cards))
+
+    # Check for affordable Places of Power
+    affordable_pops = []
+    for pop in game.available_places_of_power:
+        cost = pop.effects.cost if pop.effects else None
+        if cost is None or can_afford_cost(player, cost):
+            affordable_pops.append(pop)
+    if affordable_pops:
+        possible_actions.append(('buy_pop', affordable_pops))
+
+    # Check for monument purchase (4 gold)
+    monument_cost = {'gold': 4}
+    if can_afford_cost(player, monument_cost):
+        # Can buy from face-up or deck
+        monument_options = []
+        for mon in game.available_monuments:
+            monument_options.append(('face_up', mon))
+        if game.monument_deck:
+            monument_options.append(('deck', None))
+        if monument_options:
+            possible_actions.append(('buy_monument', monument_options))
+
+    # Check for discard option (if we have cards in hand)
+    if player.hand:
+        possible_actions.append(('discard', player.hand))
+
+    # If no possible actions, must pass
+    if not possible_actions:
+        print(f"Bot {player_id} passing (no actions available)", flush=True)
+        player_pass(game, player_id)
+        return
+
+    # Random chance to pass even if actions available (to end rounds eventually)
+    if random.random() < 0.3:
+        print(f"Bot {player_id} passing (choosing to pass)", flush=True)
+        player_pass(game, player_id)
+        return
+
+    # Pick a random action type
+    action_type, options = random.choice(possible_actions)
+
+    if action_type == 'play_card':
+        card = random.choice(options)
+        print(f"Bot {player_id} playing card: {card.name}", flush=True)
+        player_play_card(game, player_id, card.name)
+
+    elif action_type == 'buy_pop':
+        pop = random.choice(options)
+        print(f"Bot {player_id} buying Place of Power: {pop.name}", flush=True)
+        player_buy_place_of_power(game, player_id, pop.name)
+
+    elif action_type == 'buy_monument':
+        choice = random.choice(options)
+        if choice[0] == 'deck':
+            print(f"Bot {player_id} buying monument from deck", flush=True)
+            player_buy_monument(game, player_id, from_deck=True)
+        else:
+            mon = choice[1]
+            print(f"Bot {player_id} buying monument: {mon.name}", flush=True)
+            player_buy_monument(game, player_id, mon.name)
+
+    elif action_type == 'discard':
+        card = random.choice(options)
+        # Randomly choose gold or 2 non-gold
+        if random.random() < 0.5:
+            print(f"Bot {player_id} discarding {card.name} for 1 gold", flush=True)
+            player_discard_card(game, player_id, card.name, gain_gold=True)
+        else:
+            # Random 2 non-gold resources
+            resource_types = ['red', 'blue', 'green', 'black']
+            r1 = random.choice(resource_types)
+            r2 = random.choice(resource_types)
+            if r1 == r2:
+                gain = {r1: 2}
+            else:
+                gain = {r1: 1, r2: 1}
+            print(f"Bot {player_id} discarding {card.name} for {gain}", flush=True)
+            player_discard_card(game, player_id, card.name, gain_resources=gain)
+
+
 def card_to_dict(card: Card) -> dict:
     """Convert a Card to a JSON-serializable dict."""
     result = {
@@ -203,7 +316,10 @@ def card_to_dict(card: Card) -> dict:
                 'count': income.count,
                 'types': income.types
             }
-        result['effects'] = effects
+        if card.effects.cost:
+            effects['cost'] = card.effects.cost
+        if effects:
+            result['effects'] = effects
 
     return result
 
@@ -365,6 +481,17 @@ def income_state_to_dict(income_state, game: GameState) -> dict:
     }
 
 
+def action_state_to_dict(action_state, game: GameState) -> dict:
+    """Convert ActionPhaseState to a JSON-serializable dict."""
+    if action_state is None:
+        return None
+
+    return {
+        'currentPlayer': action_state.current_player,
+        'passed': {str(k): v for k, v in action_state.passed.items()}
+    }
+
+
 def game_state_to_dict(game: GameState, viewing_player_id: int = None) -> dict:
     """Convert GameState to a JSON-serializable dict.
 
@@ -377,11 +504,13 @@ def game_state_to_dict(game: GameState, viewing_player_id: int = None) -> dict:
         'players': [player_to_dict(p, viewing_player_id) for p in game.players],
         'draftState': draft_state_to_dict(game.draft_state, viewing_player_id),
         'incomeState': income_state_to_dict(game.income_state, game),
+        'actionState': action_state_to_dict(game.action_state, game),
         'availableMonuments': [card_to_dict(c) for c in game.available_monuments],
         'availablePlacesOfPower': [card_to_dict(c) for c in game.available_places_of_power],
         'availableMagicItems': [card_to_dict(c) for c in game.available_magic_items],
         'availableScrolls': [card_to_dict(c) for c in game.available_scrolls],
-        'monumentDeck': [{} for _ in game.monument_deck]  # Hidden contents
+        'monumentDeck': [{} for _ in game.monument_deck],  # Hidden contents
+        'monumentDeckCount': len(game.monument_deck)
     }
 
 
@@ -687,6 +816,129 @@ def income_finalize():
     with game_lock:
         if not player_finalizes_income(current_game, player_id):
             return jsonify({'error': 'Cannot finalize (maybe waiting for earlier players)'}), 400
+
+        return jsonify(game_state_to_dict(current_game, player_id))
+
+
+# Action phase endpoints
+
+@app.route('/api/action/pass', methods=['POST'])
+def action_pass():
+    """Player passes for the rest of the round.
+
+    Body: {playerId}
+    If first player token is face-up, passing player takes it (face-down).
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+
+    with game_lock:
+        if not player_pass(current_game, player_id):
+            return jsonify({'error': 'Cannot pass (not your turn or already passed)'}), 400
+
+        return jsonify(game_state_to_dict(current_game, player_id))
+
+
+@app.route('/api/action/play-card', methods=['POST'])
+def action_play_card():
+    """Play a card from hand.
+
+    Body: {playerId, cardName, anyPayment?: {red: 1, ...}}
+    anyPayment specifies how to pay 'any' cost portion.
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    card_name = data.get('cardName')
+    any_payment = data.get('anyPayment')
+
+    with game_lock:
+        if not player_play_card(current_game, player_id, card_name, any_payment):
+            return jsonify({'error': 'Cannot play card (not your turn, not in hand, or cannot afford)'}), 400
+
+        return jsonify(game_state_to_dict(current_game, player_id))
+
+
+@app.route('/api/action/buy-place-of-power', methods=['POST'])
+def action_buy_pop():
+    """Buy a Place of Power.
+
+    Body: {playerId, popName}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    pop_name = data.get('popName')
+
+    with game_lock:
+        if not player_buy_place_of_power(current_game, player_id, pop_name):
+            return jsonify({'error': 'Cannot buy Place of Power (not your turn, not available, or cannot afford)'}), 400
+
+        return jsonify(game_state_to_dict(current_game, player_id))
+
+
+@app.route('/api/action/buy-monument', methods=['POST'])
+def action_buy_monument():
+    """Buy a Monument.
+
+    Body: {playerId, monumentName?, fromDeck?: bool}
+    monumentName: name of face-up monument (ignored if fromDeck=true)
+    fromDeck: buy top of monument deck instead of face-up
+    All monuments cost 4 gold.
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    monument_name = data.get('monumentName')
+    from_deck = data.get('fromDeck', False)
+
+    with game_lock:
+        if not player_buy_monument(current_game, player_id, monument_name, from_deck):
+            return jsonify({'error': 'Cannot buy monument (not your turn, not available, or cannot afford)'}), 400
+
+        return jsonify(game_state_to_dict(current_game, player_id))
+
+
+@app.route('/api/action/discard-card', methods=['POST'])
+def action_discard_card():
+    """Discard a card from hand to gain resources.
+
+    Body: {playerId, cardName, gainGold?: bool, gainResources?: {red: 1, blue: 1}}
+    gainGold: if true, gain 1 gold
+    gainResources: gain 2 total non-gold resources (e.g., {red: 2} or {red: 1, green: 1})
+    Exactly one of gainGold or gainResources must be specified.
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    card_name = data.get('cardName')
+    gain_gold = data.get('gainGold', False)
+    gain_resources = data.get('gainResources')
+
+    with game_lock:
+        if not player_discard_card(current_game, player_id, card_name, gain_gold, gain_resources):
+            return jsonify({'error': 'Cannot discard card (not your turn, card not in hand, or invalid resource choice)'}), 400
 
         return jsonify(game_state_to_dict(current_game, player_id))
 

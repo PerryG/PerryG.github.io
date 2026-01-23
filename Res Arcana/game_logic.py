@@ -5,7 +5,7 @@ from typing import List, Optional, Dict
 
 from game_state import (
     Card, CardType, ControlledCard, DraftState, GamePhase,
-    GameState, PlayerState, ResourceType, IncomePhaseState
+    GameState, PlayerState, ResourceType, IncomePhaseState, ActionPhaseState
 )
 from cards import (
     ARTIFACTS, MAGES, MONUMENTS, MAGIC_ITEMS, SCROLLS,
@@ -570,4 +570,356 @@ def apply_income_and_advance(game: GameState) -> None:
 
     # Clear income state and advance to action phase
     game.income_state = None
+    start_action_phase(game)
+
+
+# ============================================================
+# Action Phase
+# ============================================================
+
+def start_action_phase(game: GameState) -> None:
+    """Begin the action phase: first player starts, track passes."""
+    first_player = game.first_player()
+    first_player_id = first_player.player_id if first_player else 0
+
+    game.action_state = ActionPhaseState(
+        current_player=first_player_id,
+        passed={p.player_id: False for p in game.players}
+    )
     game.phase = GamePhase.PLAYING
+
+
+def get_current_player(game: GameState) -> Optional[int]:
+    """Get the player ID whose turn it is, or None if round is over."""
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return None
+    return game.action_state.current_player
+
+
+def advance_to_next_player(game: GameState) -> None:
+    """Move to the next player who hasn't passed."""
+    if not game.action_state:
+        return
+
+    num_players = len(game.players)
+    current = game.action_state.current_player
+
+    # Find next player who hasn't passed
+    for i in range(1, num_players + 1):
+        next_player = (current + i) % num_players
+        if not game.action_state.passed.get(next_player, False):
+            game.action_state.current_player = next_player
+            return
+
+    # All players have passed - round ends
+    end_action_phase(game)
+
+
+def all_players_passed(game: GameState) -> bool:
+    """Check if all players have passed."""
+    if not game.action_state:
+        return False
+    return all(game.action_state.passed.get(p.player_id, False) for p in game.players)
+
+
+def end_action_phase(game: GameState) -> None:
+    """End the action phase and start the next round's income phase."""
+    game.action_state = None
+    # Start next round with income phase
+    start_income_phase(game)
+
+
+def player_pass(game: GameState, player_id: int) -> bool:
+    """Player passes for the rest of this round.
+
+    If the first player token is face-up, the passing player takes it
+    and flips it face-down.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return False
+
+    if game.action_state.current_player != player_id:
+        return False  # Not their turn
+
+    if game.action_state.passed.get(player_id, False):
+        return False  # Already passed
+
+    # Handle first player token
+    for player in game.players:
+        if player.has_first_player_token and player.first_player_token_face_up:
+            # Transfer token to passing player and flip face-down
+            player.has_first_player_token = False
+            passing_player = game.get_player(player_id)
+            passing_player.has_first_player_token = True
+            passing_player.first_player_token_face_up = False
+            break
+
+    # Mark as passed
+    game.action_state.passed[player_id] = True
+
+    # Move to next player
+    advance_to_next_player(game)
+    return True
+
+
+def can_afford_cost(player: PlayerState, cost: Dict[str, int]) -> bool:
+    """Check if player can afford a cost with their current resources."""
+    if not cost:
+        return True
+
+    # Copy player resources to simulate spending
+    available = {rt: player.resource_count(rt) for rt in ResourceType}
+
+    # First, pay specific resource costs
+    for resource_str, amount in cost.items():
+        if resource_str == 'any':
+            continue  # Handle 'any' last
+        if resource_str == 'gold':
+            rt = ResourceType.GOLD
+        else:
+            rt = ResourceType(resource_str)
+        if available.get(rt, 0) < amount:
+            return False
+        available[rt] -= amount
+
+    # Then check if we can pay 'any' costs with remaining non-gold resources
+    any_cost = cost.get('any', 0)
+    if any_cost > 0:
+        non_gold_total = sum(
+            available.get(rt, 0) for rt in ResourceType if rt != ResourceType.GOLD
+        )
+        if non_gold_total < any_cost:
+            return False
+
+    return True
+
+
+def pay_cost(player: PlayerState, cost: Dict[str, int], any_payment: Dict[str, int] = None) -> bool:
+    """Pay a cost from player's resources.
+
+    any_payment specifies how to pay the 'any' portion (e.g., {'red': 2, 'blue': 1}).
+    Returns False if insufficient resources.
+    """
+    if not cost:
+        return True
+
+    if not can_afford_cost(player, cost):
+        return False
+
+    # Pay specific costs
+    for resource_str, amount in cost.items():
+        if resource_str == 'any':
+            continue
+        if resource_str == 'gold':
+            rt = ResourceType.GOLD
+        else:
+            rt = ResourceType(resource_str)
+        player.remove_resource(rt, amount)
+
+    # Pay 'any' costs
+    any_cost = cost.get('any', 0)
+    if any_cost > 0:
+        if any_payment:
+            # Use specified payment
+            total_paid = 0
+            for resource_str, amount in any_payment.items():
+                rt = ResourceType(resource_str)
+                if rt == ResourceType.GOLD:
+                    continue  # 'any' means non-gold
+                player.remove_resource(rt, amount)
+                total_paid += amount
+            if total_paid != any_cost:
+                return False  # Didn't pay the right amount
+        else:
+            # Auto-pay with available non-gold resources
+            remaining = any_cost
+            for rt in [ResourceType.RED, ResourceType.BLUE, ResourceType.GREEN, ResourceType.BLACK]:
+                available = player.resource_count(rt)
+                to_pay = min(available, remaining)
+                if to_pay > 0:
+                    player.remove_resource(rt, to_pay)
+                    remaining -= to_pay
+                if remaining == 0:
+                    break
+
+    return True
+
+
+def player_play_card(game: GameState, player_id: int, card_name: str,
+                     any_payment: Dict[str, int] = None) -> bool:
+    """Player plays a card from their hand.
+
+    Returns False if not their turn, card not in hand, or can't afford.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return False
+
+    if game.action_state.current_player != player_id:
+        return False
+
+    player = game.get_player(player_id)
+
+    # Find card in hand
+    card = next((c for c in player.hand if c.name == card_name), None)
+    if not card:
+        return False
+
+    # Check and pay cost
+    cost = card.effects.cost if card.effects else None
+    if cost and not can_afford_cost(player, cost):
+        return False
+
+    if cost:
+        pay_cost(player, cost, any_payment)
+
+    # Move card from hand to play
+    player.hand.remove(card)
+    player.artifacts.append(ControlledCard(card))
+
+    # Move to next player
+    advance_to_next_player(game)
+    return True
+
+
+def player_buy_place_of_power(game: GameState, player_id: int, pop_name: str) -> bool:
+    """Player buys a Place of Power from the center.
+
+    Returns False if not their turn, PoP not available, or can't afford.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return False
+
+    if game.action_state.current_player != player_id:
+        return False
+
+    player = game.get_player(player_id)
+
+    # Find Place of Power
+    pop = next((p for p in game.available_places_of_power if p.name == pop_name), None)
+    if not pop:
+        return False
+
+    # Check and pay cost
+    cost = pop.effects.cost if pop.effects else None
+    if cost and not can_afford_cost(player, cost):
+        return False
+
+    if cost:
+        pay_cost(player, cost)
+
+    # Move PoP to player's control
+    game.available_places_of_power.remove(pop)
+    player.places_of_power.append(ControlledCard(pop))
+
+    # Move to next player
+    advance_to_next_player(game)
+    return True
+
+
+def player_buy_monument(game: GameState, player_id: int, monument_name: str = None,
+                        from_deck: bool = False) -> bool:
+    """Player buys a Monument.
+
+    monument_name: Name of face-up monument to buy (ignored if from_deck=True)
+    from_deck: If True, buy top card of monument deck instead
+
+    All monuments cost 4 gold.
+    Returns False if not their turn, monument not available, or can't afford.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return False
+
+    if game.action_state.current_player != player_id:
+        return False
+
+    player = game.get_player(player_id)
+
+    # Monument cost is always 4 gold
+    monument_cost = {'gold': 4}
+    if not can_afford_cost(player, monument_cost):
+        return False
+
+    if from_deck:
+        # Buy from top of deck
+        if not game.monument_deck:
+            return False
+        monument = game.monument_deck.pop(0)
+    else:
+        # Buy face-up monument
+        monument = next((m for m in game.available_monuments if m.name == monument_name), None)
+        if not monument:
+            return False
+        game.available_monuments.remove(monument)
+
+        # Replace with top of deck if available
+        if game.monument_deck:
+            game.available_monuments.append(game.monument_deck.pop(0))
+
+    # Pay cost
+    pay_cost(player, monument_cost)
+
+    # Add monument to player
+    player.monuments.append(ControlledCard(monument))
+
+    # Move to next player
+    advance_to_next_player(game)
+    return True
+
+
+def player_discard_card(game: GameState, player_id: int, card_name: str,
+                        gain_gold: bool = False, gain_resources: Dict[str, int] = None) -> bool:
+    """Player discards a card from hand to gain resources.
+
+    gain_gold: If True, gain 1 gold
+    gain_resources: If provided, gain these resources (must total 2, non-gold only)
+                   e.g., {'red': 2} or {'red': 1, 'blue': 1}
+
+    Exactly one of gain_gold or gain_resources must be specified.
+    Returns False if not their turn, card not in hand, or invalid resource choice.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return False
+
+    if game.action_state.current_player != player_id:
+        return False
+
+    # Validate exactly one option is chosen
+    if gain_gold and gain_resources:
+        return False
+    if not gain_gold and not gain_resources:
+        return False
+
+    player = game.get_player(player_id)
+
+    # Find card in hand
+    card = next((c for c in player.hand if c.name == card_name), None)
+    if not card:
+        return False
+
+    # Validate gain_resources if specified
+    if gain_resources:
+        total = sum(gain_resources.values())
+        if total != 2:
+            return False
+        # Must be non-gold resources
+        for res_type in gain_resources.keys():
+            if res_type == 'gold':
+                return False
+            if res_type not in ['red', 'blue', 'green', 'black']:
+                return False
+
+    # Discard the card
+    player.hand.remove(card)
+    player.discard.append(card)
+
+    # Grant resources
+    if gain_gold:
+        player.add_resource(ResourceType.GOLD, 1)
+    else:
+        for res_str, count in gain_resources.items():
+            res_type = ResourceType(res_str)
+            player.add_resource(res_type, count)
+
+    # Move to next player
+    advance_to_next_player(game)
+    return True
