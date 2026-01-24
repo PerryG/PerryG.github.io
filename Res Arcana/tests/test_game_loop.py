@@ -188,6 +188,78 @@ def test_first_player_token_transfer_on_pass():
     print("  First player token transferred correctly")
 
 
+def test_fixed_income():
+    """Test that fixed income gives all specified resources (AND, not OR)."""
+    print("=== Test: Fixed income (AND) ===")
+    game = create_new_game(2)
+    game.draft_state = None
+    game.phase = GamePhase.INCOME
+    game.income_state = IncomePhaseState()
+
+    player = game.players[0]
+    player.player_id = 0
+    game.income_state.finalized[0] = False
+    game.income_state.finalized[1] = True  # Other player already done
+    game.income_state.waiting_for_earlier[0] = False
+    game.income_state.waiting_for_earlier[1] = False
+    game.income_state.collection_choices[0] = {}
+    game.income_state.collection_choices[1] = {}
+    game.income_state.income_choices[0] = {}
+    game.income_state.income_choices[1] = {}
+    game.income_state.auto_skip_places_of_power[0] = True
+    game.income_state.auto_skip_places_of_power[1] = True
+
+    # Give player Chalice of Life (income: 1 blue AND 1 green)
+    chalice = next(c for c in ARTIFACTS if c.name == "Chalice of Life")
+    player.artifacts = [ControlledCard(chalice)]
+    player.resources = {}  # Start with nothing
+
+    # Finalize income (triggers apply_income_and_advance)
+    player_finalizes_income(game, 0)
+
+    # Player should have BOTH 1 blue AND 1 green
+    assert player.resource_count(ResourceType.BLUE) == 1, f"Expected 1 blue, got {player.resource_count(ResourceType.BLUE)}"
+    assert player.resource_count(ResourceType.GREEN) == 1, f"Expected 1 green, got {player.resource_count(ResourceType.GREEN)}"
+    print(f"  Got 1 blue AND 1 green (correct)")
+
+
+def test_choice_income():
+    """Test that choice income allows player to choose resources."""
+    print("=== Test: Choice income (OR) ===")
+    game = create_new_game(2)
+    game.draft_state = None
+    game.phase = GamePhase.INCOME
+    game.income_state = IncomePhaseState()
+
+    player = game.players[0]
+    player.player_id = 0
+    game.income_state.finalized[0] = False
+    game.income_state.finalized[1] = True
+    game.income_state.waiting_for_earlier[0] = False
+    game.income_state.waiting_for_earlier[1] = False
+    game.income_state.collection_choices[0] = {}
+    game.income_state.collection_choices[1] = {}
+    game.income_state.income_choices[1] = {}
+    game.income_state.auto_skip_places_of_power[0] = True
+    game.income_state.auto_skip_places_of_power[1] = True
+
+    # Give player Celestial Horse (income: 2 from red/blue/green - choice)
+    horse = next(c for c in ARTIFACTS if c.name == "Celestial Horse")
+    player.artifacts = [ControlledCard(horse)]
+    player.resources = {}
+
+    # Player chooses to get 2 red
+    game.income_state.income_choices[0] = {"Celestial Horse": {"red": 2}}
+
+    player_finalizes_income(game, 0)
+
+    # Player should have 2 red (their choice)
+    assert player.resource_count(ResourceType.RED) == 2, f"Expected 2 red, got {player.resource_count(ResourceType.RED)}"
+    assert player.resource_count(ResourceType.BLUE) == 0, "Should have 0 blue"
+    assert player.resource_count(ResourceType.GREEN) == 0, "Should have 0 green"
+    print(f"  Got 2 red (player's choice - correct)")
+
+
 def run_all_tests():
     """Run all game loop tests."""
     print("\n" + "="*60)
@@ -202,6 +274,8 @@ def run_all_tests():
     test_victory_check_tie_breaker()
     test_magic_item_swap_on_pass()
     test_first_player_token_transfer_on_pass()
+    test_fixed_income()
+    test_choice_income()
 
     print("\n" + "="*60)
     print("ALL TESTS PASSED!")

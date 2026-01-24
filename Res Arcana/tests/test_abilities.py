@@ -206,6 +206,60 @@ def test_convert_ability():
     print("  Convert ability works correctly")
 
 
+def test_variable_payment_ability():
+    """Test variable payment ability (Prism: pay X of one color -> gain X of different color)."""
+    print("=== Test: Variable payment ability (Prism) ===")
+    game = create_new_game(2)
+    game.phase = GamePhase.PLAYING
+    game.action_state = ActionPhaseState(current_player=0, passed={0: False, 1: False})
+    game.draft_state = None
+
+    player = game.players[0]
+
+    prism = next(c for c in ARTIFACTS if c.name == "Prism")
+    player.artifacts = [ControlledCard(prism)]
+    player.resources = {ResourceType.RED: 5, ResourceType.BLUE: 1}
+
+    # Use Prism's second ability: pay 3 red, gain 3 blue
+    result = use_ability(game, 0, "Prism", 1,
+                        cost_choices={'variable_payment': {'red': 3}},
+                        effect_choices={'resource_choices': {'blue': 3}})
+
+    assert result['success'], f"Ability should succeed: {result}"
+    assert player.resource_count(ResourceType.RED) == 2, "Should have 2 red (5-3)"
+    assert player.resource_count(ResourceType.BLUE) == 4, "Should have 4 blue (1+3)"
+    print("  Variable payment ability works correctly")
+
+
+def test_variable_payment_different_from_paid():
+    """Test that different_from_paid constraint blocks same type."""
+    print("=== Test: Variable payment different_from_paid constraint ===")
+    game = create_new_game(2)
+    game.phase = GamePhase.PLAYING
+    game.action_state = ActionPhaseState(current_player=0, passed={0: False, 1: False})
+    game.draft_state = None
+
+    player = game.players[0]
+
+    prism = next(c for c in ARTIFACTS if c.name == "Prism")
+    player.artifacts = [ControlledCard(prism)]
+    player.resources = {ResourceType.RED: 5}
+
+    # Try to pay red and gain red - should be blocked, defaults to blue
+    result = use_ability(game, 0, "Prism", 1,
+                        cost_choices={'variable_payment': {'red': 3}},
+                        effect_choices={'resource_choices': {'red': 3}})
+
+    assert result['success'], f"Ability should succeed: {result}"
+    assert player.resource_count(ResourceType.RED) == 2, "Should have 2 red (5-3)"
+    # Should have gained a non-red type (defaults to blue)
+    total_non_red = (player.resource_count(ResourceType.BLUE) +
+                     player.resource_count(ResourceType.GREEN) +
+                     player.resource_count(ResourceType.BLACK))
+    assert total_non_red == 3, "Should have gained 3 of non-red type"
+    print("  different_from_paid constraint works correctly")
+
+
 def run_all_tests():
     """Run all ability tests."""
     print("\n" + "="*60)
@@ -220,6 +274,8 @@ def run_all_tests():
     test_resource_choice_effect()
     test_passive_cost_reduction()
     test_convert_ability()
+    test_variable_payment_ability()
+    test_variable_payment_different_from_paid()
 
     print("\n" + "="*60)
     print("ALL TESTS PASSED!")

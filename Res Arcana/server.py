@@ -336,6 +336,11 @@ def ability_cost_to_dict(cost) -> dict:
         result['tag'] = cost.tag
     if cost.cost_type == 'destroy_artifact':
         result['mustBeDifferent'] = cost.must_be_different
+    if cost.cost_type == 'pay_variable':
+        result['minAmount'] = cost.min_amount
+        result['sameType'] = cost.same_type
+        if cost.types:
+            result['types'] = cost.types
     return result
 
 
@@ -368,6 +373,10 @@ def ability_effect_to_dict(effect) -> dict:
         result['checkTag'] = effect.check_tag
     if effect.bonus:
         result['bonus'] = effect.bonus
+    if effect.amount_from_paid:
+        result['amountFromPaid'] = effect.amount_from_paid
+    if effect.different_from_paid:
+        result['differentFromPaid'] = effect.different_from_paid
     return result
 
 

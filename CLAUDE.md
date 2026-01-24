@@ -63,3 +63,7 @@ cd "Res Arcana/tests"
 ~/venvs/general/bin/python test_game_loop.py
 ~/venvs/general/bin/python test_abilities.py
 ```
+
+**Implementation guidelines:**
+- Do NOT "simplify" card implementations or deviate from the specified behavior without explicitly informing the user. If a card's effect is too complex to implement with current infrastructure, say "this card has not been implemented yet" rather than implementing a simplified version that introduces known bugs.
+- When implementing cards, verify the implementation matches the comment/description exactly before considering it done.

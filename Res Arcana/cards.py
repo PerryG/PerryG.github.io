@@ -2,8 +2,24 @@
 
 from game_state import (
     Card, CardType, CardEffects, IncomeEffect,
-    Ability, AbilityCost, AbilityEffect, PassiveEffect
+    Ability, AbilityCost, AbilityEffect, PassiveEffect,
+    ResourceType, CardTag, CostType, EffectType, TriggerType, PassiveEffectType
 )
+
+# Shortcuts for resource types
+RED = ResourceType.RED
+BLUE = ResourceType.BLUE
+GREEN = ResourceType.GREEN
+BLACK = ResourceType.BLACK
+GOLD = ResourceType.GOLD
+
+# Shortcuts for card tags
+DRAGON = CardTag.DRAGON
+DEMON = CardTag.DEMON
+ANIMAL = CardTag.ANIMAL
+
+# All non-gold resource types (commonly used)
+NON_GOLD = [RED, BLUE, GREEN, BLACK]
 
 
 # ============================================================
@@ -11,12 +27,46 @@ from game_state import (
 # ============================================================
 
 def cost(**resources) -> CardEffects:
-    """Create a CardEffects with just a cost."""
-    return CardEffects(cost=resources)
+    """Create a CardEffects with just a cost.
+
+    Use ResourceType values or strings: cost(red=2) or cost(**{RED: 2})
+    """
+    # Convert string keys to ResourceType if needed
+    converted = {}
+    for k, v in resources.items():
+        if isinstance(k, str):
+            if k == 'any':
+                converted[k] = v  # Keep 'any' as special key
+            else:
+                converted[ResourceType(k)] = v
+        else:
+            converted[k] = v
+    return CardEffects(cost=converted)
 
 
-def income_effect(count: int, *types: str, conditional: bool = False, add_to_card: bool = False) -> IncomeEffect:
-    """Create an IncomeEffect."""
+def fixed_income(conditional: bool = False, add_to_card: bool = False, **resources) -> IncomeEffect:
+    """Create a fixed IncomeEffect - gain specific resources.
+
+    Examples:
+        fixed_income(red=1)           → gain 1 red
+        fixed_income(blue=1, green=1) → gain 1 blue AND 1 green
+    """
+    converted = {}
+    for k, v in resources.items():
+        if isinstance(k, ResourceType):
+            converted[k] = v
+        else:
+            converted[ResourceType(k)] = v
+    return IncomeEffect(resources=converted, conditional=conditional, add_to_card=add_to_card)
+
+
+def choice_income(count: int, *types: ResourceType, conditional: bool = False, add_to_card: bool = False) -> IncomeEffect:
+    """Create a choice IncomeEffect - player chooses from types.
+
+    Examples:
+        choice_income(1, BLACK, GREEN)     → gain 1, choosing black or green
+        choice_income(2, RED, BLUE, GREEN) → gain 2 from red/blue/green in any combination
+    """
     return IncomeEffect(count=count, types=list(types), conditional=conditional, add_to_card=add_to_card)
 
 
@@ -26,124 +76,174 @@ def income_effect(count: int, *types: str, conditional: bool = False, add_to_car
 
 def tap_cost() -> AbilityCost:
     """Cost: tap this card."""
-    return AbilityCost(cost_type='tap')
+    return AbilityCost(cost_type=CostType.TAP)
 
 
 def pay_cost(**resources) -> AbilityCost:
     """Cost: pay resources from player pool."""
-    return AbilityCost(cost_type='pay', resources=resources)
+    # Convert string keys to ResourceType
+    converted = {}
+    for k, v in resources.items():
+        if isinstance(k, str):
+            if k == 'any':
+                converted[k] = v
+            else:
+                converted[ResourceType(k)] = v
+        else:
+            converted[k] = v
+    return AbilityCost(cost_type=CostType.PAY, resources=converted)
+
+
+def pay_variable_cost(min_amount: int = 1, same_type: bool = True, *types: ResourceType) -> AbilityCost:
+    """Cost: pay 1+ resources of allowed types.
+
+    If same_type=True, all paid resources must be the same type.
+    """
+    return AbilityCost(
+        cost_type=CostType.PAY_VARIABLE,
+        min_amount=min_amount,
+        same_type=same_type,
+        types=list(types) if types else NON_GOLD.copy()
+    )
 
 
 def remove_from_card_cost(**resources) -> AbilityCost:
     """Cost: remove resources from this card."""
-    return AbilityCost(cost_type='remove_from_card', resources=resources)
+    converted = {ResourceType(k) if isinstance(k, str) else k: v for k, v in resources.items()}
+    return AbilityCost(cost_type=CostType.REMOVE_FROM_CARD, resources=converted)
 
 
 def destroy_self_cost() -> AbilityCost:
     """Cost: destroy this card."""
-    return AbilityCost(cost_type='destroy_self')
+    return AbilityCost(cost_type=CostType.DESTROY_SELF)
 
 
 def destroy_artifact_cost(must_be_different: bool = True) -> AbilityCost:
     """Cost: destroy an artifact."""
-    return AbilityCost(cost_type='destroy_artifact', must_be_different=must_be_different)
+    return AbilityCost(cost_type=CostType.DESTROY_ARTIFACT, must_be_different=must_be_different)
 
 
 def discard_cost() -> AbilityCost:
     """Cost: discard a card from hand."""
-    return AbilityCost(cost_type='discard')
+    return AbilityCost(cost_type=CostType.DISCARD)
 
 
-def tap_card_cost(tag: str = None) -> AbilityCost:
+def tap_card_cost(tag: CardTag = None) -> AbilityCost:
     """Cost: tap another card (optionally filtered by tag)."""
-    return AbilityCost(cost_type='tap_card', tag=tag)
+    return AbilityCost(cost_type=CostType.TAP_CARD, tag=tag)
 
 
 def gain_effect(**resources) -> AbilityEffect:
     """Effect: gain specific resources to player pool."""
-    return AbilityEffect(effect_type='gain', resources=resources)
+    converted = {ResourceType(k) if isinstance(k, str) else k: v for k, v in resources.items()}
+    return AbilityEffect(effect_type=EffectType.GAIN, resources=converted)
 
 
-def gain_choice_effect(count: int, *types: str) -> AbilityEffect:
+def gain_choice_effect(count: int, *types: ResourceType) -> AbilityEffect:
     """Effect: gain resources with choice."""
-    return AbilityEffect(effect_type='gain', count=count, types=list(types))
+    return AbilityEffect(effect_type=EffectType.GAIN, count=count, types=list(types))
+
+
+def gain_from_paid_effect(*types: ResourceType, different_from_paid: bool = False) -> AbilityEffect:
+    """Effect: gain resources equal to what was paid (for pay_variable costs).
+
+    If different_from_paid=True, must choose a different type than what was paid.
+    """
+    return AbilityEffect(
+        effect_type=EffectType.GAIN,
+        amount_from_paid=True,
+        different_from_paid=different_from_paid,
+        types=list(types) if types else NON_GOLD.copy()
+    )
 
 
 def add_to_card_effect(**resources) -> AbilityEffect:
     """Effect: add specific resources to this card."""
-    return AbilityEffect(effect_type='add_to_card', resources=resources)
+    converted = {ResourceType(k) if isinstance(k, str) else k: v for k, v in resources.items()}
+    return AbilityEffect(effect_type=EffectType.ADD_TO_CARD, resources=converted)
 
 
-def add_to_card_choice_effect(count: int, *types: str) -> AbilityEffect:
+def add_to_card_choice_effect(count: int, *types: ResourceType) -> AbilityEffect:
     """Effect: add resources to this card with choice."""
-    return AbilityEffect(effect_type='add_to_card', count=count, types=list(types))
+    return AbilityEffect(effect_type=EffectType.ADD_TO_CARD, count=count, types=list(types))
 
 
-def add_to_other_card_effect(resource_type: str) -> AbilityEffect:
+def add_to_other_card_effect(resource_type: ResourceType) -> AbilityEffect:
     """Effect: add a resource to another card."""
-    return AbilityEffect(effect_type='add_to_card', target='other', resources={resource_type: 1})
+    return AbilityEffect(effect_type=EffectType.ADD_TO_CARD, target='other', resources={resource_type: 1})
 
 
 def take_from_card_effect() -> AbilityEffect:
     """Effect: take all resources from another card."""
-    return AbilityEffect(effect_type='take_from_card', target='other')
+    return AbilityEffect(effect_type=EffectType.TAKE_FROM_CARD, target='other')
 
 
 def attack_effect(green_cost: int, avoid_cost=None) -> AbilityEffect:
     """Effect: attack all opponents."""
-    return AbilityEffect(effect_type='attack', green_cost=green_cost, avoid_cost=avoid_cost)
+    return AbilityEffect(effect_type=EffectType.ATTACK, green_cost=green_cost, avoid_cost=avoid_cost)
 
 
 def draw_effect(count: int = 1) -> AbilityEffect:
     """Effect: draw cards."""
-    return AbilityEffect(effect_type='draw', count=count)
+    return AbilityEffect(effect_type=EffectType.DRAW, count=count)
 
 
 def draw_discard_effect(draw: int, discard: int) -> AbilityEffect:
     """Effect: draw cards then discard."""
-    return AbilityEffect(effect_type='draw_discard', count=draw, discard_count=discard)
+    return AbilityEffect(effect_type=EffectType.DRAW_DISCARD, count=draw, discard_count=discard)
 
 
 def untap_effect(target: str = 'other') -> AbilityEffect:
     """Effect: untap a card."""
-    return AbilityEffect(effect_type='untap', target=target)
+    return AbilityEffect(effect_type=EffectType.UNTAP, target=target)
 
 
 def convert_effect() -> AbilityEffect:
     """Effect: convert resources to gold."""
-    return AbilityEffect(effect_type='convert')
+    return AbilityEffect(effect_type=EffectType.CONVERT)
 
 
 def play_card_effect(source: str = 'hand', discount: int = 0, discount_type: str = 'non_gold',
-                     free: bool = False, card_filter: str = None) -> AbilityEffect:
+                     free: bool = False, card_filter: CardTag = None) -> AbilityEffect:
     """Effect: play a card from hand or discard."""
-    return AbilityEffect(effect_type='play_card', source=source, discount=discount,
+    return AbilityEffect(effect_type=EffectType.PLAY_CARD, source=source, discount=discount,
                          discount_type=discount_type, free=free, card_filter=card_filter)
 
 
 def give_opponents_effect(**resources) -> AbilityEffect:
     """Effect: give resources to all opponents."""
-    return AbilityEffect(effect_type='give_opponents', resources=resources)
+    converted = {ResourceType(k) if isinstance(k, str) else k: v for k, v in resources.items()}
+    return AbilityEffect(effect_type=EffectType.GIVE_OPPONENTS, resources=converted)
 
 
-def gain_per_opponent_effect(gain_type: str, check_type: str) -> AbilityEffect:
+def gain_per_opponent_effect(gain_type: ResourceType, check_type: ResourceType) -> AbilityEffect:
     """Effect: gain resources equal to max of a resource type among opponents."""
-    return AbilityEffect(effect_type='gain_per_opponent', resources={gain_type: 1}, check_resource=check_type)
+    return AbilityEffect(effect_type=EffectType.GAIN_PER_OPPONENT, resources={gain_type: 1}, check_resource=check_type)
 
 
-def gain_per_opponent_count_effect(gain_type: str, check_tag: str) -> AbilityEffect:
+def gain_per_opponent_count_effect(gain_type: ResourceType, check_tag: CardTag) -> AbilityEffect:
     """Effect: gain resources equal to max count of a card type among opponents."""
-    return AbilityEffect(effect_type='gain_per_opponent_count', resources={gain_type: 1}, check_tag=check_tag)
+    return AbilityEffect(effect_type=EffectType.GAIN_PER_OPPONENT_COUNT, resources={gain_type: 1}, check_tag=check_tag)
 
 
 def reorder_deck_effect(count: int, deck: str = 'self') -> AbilityEffect:
     """Effect: look at and reorder top cards of a deck."""
-    return AbilityEffect(effect_type='reorder_deck', count=count, deck=deck)
+    return AbilityEffect(effect_type=EffectType.REORDER_DECK, count=count, deck=deck)
 
 
 def ignore_attack_effect() -> AbilityEffect:
     """Effect: ignore the attack (for reactions)."""
-    return AbilityEffect(effect_type='ignore_attack')
+    return AbilityEffect(effect_type=EffectType.IGNORE_ATTACK)
+
+
+def gain_from_destroyed_effect(bonus: int = 0) -> AbilityEffect:
+    """Effect: gain resources from destroyed card's cost."""
+    return AbilityEffect(effect_type=EffectType.GAIN_FROM_DESTROYED, bonus=bonus)
+
+
+def gain_from_discarded_effect() -> AbilityEffect:
+    """Effect: gain resources from discarded card's cost."""
+    return AbilityEffect(effect_type=EffectType.GAIN_FROM_DISCARDED)
 
 
 def ability(costs: list, effects: list) -> Ability:
@@ -151,14 +251,19 @@ def ability(costs: list, effects: list) -> Ability:
     return Ability(costs=costs, effects=effects)
 
 
-def reaction(trigger: str, costs: list, effects: list, trigger_filter: str = None) -> Ability:
+def reaction(trigger: TriggerType, costs: list, effects: list, trigger_filter: CardTag = None) -> Ability:
     """Create a reaction ability."""
     return Ability(costs=costs, effects=effects, trigger=trigger, trigger_filter=trigger_filter)
 
 
-def passive(effect_type: str, **kwargs) -> PassiveEffect:
-    """Create a passive effect."""
-    return PassiveEffect(effect_type=effect_type, **kwargs)
+def passive_cost_reduction(card_filter: CardTag, amount: int, reduction_type: str = 'non_gold') -> PassiveEffect:
+    """Create a cost reduction passive effect."""
+    return PassiveEffect(
+        effect_type=PassiveEffectType.COST_REDUCTION,
+        card_filter=card_filter,
+        amount=amount,
+        reduction_type=reduction_type
+    )
 
 
 # ============================================================
@@ -192,7 +297,7 @@ ARTIFACTS = [
     Card("Celestial Horse", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 2, 'red': 1},
-             income=income_effect(2, 'red', 'blue', 'green'),
+             income=choice_income(2, RED, BLUE, GREEN),
          ),
          tags={'animal'}),
 
@@ -200,7 +305,7 @@ ARTIFACTS = [
     Card("Chalice of Fire", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'gold': 1, 'red': 1},
-             income=income_effect(2, 'red'),
+             income=fixed_income(red=2),
              abilities=[
                  ability([tap_cost(), pay_cost(red=1)], [untap_effect('other')]),
              ]
@@ -210,7 +315,7 @@ ARTIFACTS = [
     Card("Chalice of Life", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 1, 'green': 1, 'gold': 1},
-             income=income_effect(1, 'blue', 'green'),  # Note: this is 1 blue AND 1 green, not choice
+             income=fixed_income(blue=1, green=1),
              abilities=[
                  ability([pay_cost(blue=2)], [add_to_card_effect(blue=2, green=1)]),
              ]
@@ -222,7 +327,7 @@ ARTIFACTS = [
     Card("Corrupt Altar", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'black': 2, 'any': 3},
-             income=income_effect(1, 'green', 'black'),
+             income=fixed_income(green=1, black=1),
              abilities=[
                  ability([pay_cost(green=2)], [add_to_card_effect(red=3)]),
                  ability([tap_cost(), destroy_artifact_cost(must_be_different=False)],
@@ -247,7 +352,7 @@ ARTIFACTS = [
              cost={'black': 2},
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)],
-                        [add_to_card_choice_effect(3, 'red', 'blue', 'black')]),
+                        [add_to_card_choice_effect(3, RED, BLUE, BLACK)]),
              ]
          )),
 
@@ -256,9 +361,9 @@ ARTIFACTS = [
     Card("Dancing Sword", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'gold': 1, 'red': 1},
-             income=income_effect(1, 'black', 'red'),
+             income=fixed_income(black=1, red=1),
              abilities=[
-                 reaction('attacked', [pay_cost(red=1)], [ignore_attack_effect(), add_to_card_effect(black=1)]),
+                 reaction(TriggerType.ATTACKED, [pay_cost(red=1)], [ignore_attack_effect(), add_to_card_effect(black=1)]),
              ]
          )),
 
@@ -268,9 +373,9 @@ ARTIFACTS = [
     Card("Dragon Bridle", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 1, 'green': 1, 'red': 1, 'black': 1},
-             passives=[passive('cost_reduction', card_filter='dragon', amount=3, reduction_type='non_gold')],
+             passives=[passive_cost_reduction(DRAGON, 3, 'non_gold')],
              abilities=[
-                 reaction('attacked', [tap_cost()], [ignore_attack_effect()], trigger_filter='dragon'),
+                 reaction(TriggerType.ATTACKED, [tap_cost()], [ignore_attack_effect()], trigger_filter=DRAGON),
              ]
          ),
          points=1),
@@ -281,7 +386,7 @@ ARTIFACTS = [
              cost={'gold': 1},
              abilities=[
                  ability([destroy_self_cost()],
-                        [play_card_effect(source='hand', discount=4, discount_type='non_gold', card_filter='dragon')]),
+                        [play_card_effect(source='hand', discount=4, discount_type='non_gold', card_filter=DRAGON)]),
              ]
          ),
          points=1),
@@ -293,7 +398,7 @@ ARTIFACTS = [
              abilities=[
                  ability([pay_cost(red=2)], [add_to_card_effect(red=3)]),
                  ability([tap_cost(), pay_cost(red=3)],
-                        [play_card_effect(source='hand', free=True, card_filter='dragon')]),
+                        [play_card_effect(source='hand', free=True, card_filter=DRAGON)]),
              ]
          )),
 
@@ -316,13 +421,13 @@ ARTIFACTS = [
          ),
          tags={'dragon'}, points=1),
 
-    # Elemental Spring: income 1 blue+green+red, reaction attacked: pay blue → ignore
+    # Elemental Spring: income 1 blue + 1 green + 1 red, reaction attacked: pay blue → ignore
     Card("Elemental Spring", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'red': 2, 'blue': 1, 'green': 1},
-             income=income_effect(1, 'blue', 'green', 'red'),
+             income=fixed_income(blue=1, green=1, red=1),
              abilities=[
-                 reaction('attacked', [pay_cost(blue=1)], [ignore_attack_effect()]),
+                 reaction(TriggerType.ATTACKED, [pay_cost(blue=1)], [ignore_attack_effect()]),
              ]
          )),
 
@@ -361,7 +466,7 @@ ARTIFACTS = [
     Card("Flaming Pit", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'red': 2},
-             income=income_effect(1, 'red'),
+             income=fixed_income(red=1),
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)], [gain_effect(red=1, black=1)]),
              ]
@@ -371,7 +476,7 @@ ARTIFACTS = [
     Card("Fountain of Youth", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 1, 'black': 1},
-             income=income_effect(1, 'green'),
+             income=fixed_income(green=1),
              abilities=[
                  ability([pay_cost(black=2)], [add_to_card_effect(blue=2, green=1)]),
              ]
@@ -383,7 +488,7 @@ ARTIFACTS = [
              cost={'red': 1},
              abilities=[
                  ability([pay_cost(red=1)], [untap_effect('self')]),  # Note: only usable when tapped
-                 reaction('attacked', [tap_cost()], [ignore_attack_effect()]),
+                 reaction(TriggerType.ATTACKED, [tap_cost()], [ignore_attack_effect()]),
              ]
          ),
          tags={'animal'}),
@@ -401,7 +506,7 @@ ARTIFACTS = [
     Card("Hawk", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 1, 'green': 1},
-             income=income_effect(1, 'blue'),
+             income=fixed_income(blue=1),
              abilities=[
                  ability([tap_cost(), pay_cost(blue=2)], [draw_effect(1)]),
                  ability([tap_cost()], [reorder_deck_effect(3, 'self_or_monuments')]),
@@ -415,7 +520,7 @@ ARTIFACTS = [
              cost={'gold': 2},
              abilities=[
                  ability([tap_cost()], [gain_effect(gold=1)]),
-                 ability([tap_cost()], [gain_choice_effect(3, 'red', 'blue', 'green', 'black')]),
+                 ability([tap_cost()], [gain_choice_effect(3, RED, BLUE, GREEN, BLACK)]),
              ]
          )),
 
@@ -423,9 +528,9 @@ ARTIFACTS = [
     Card("Hypnotic Basin", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 2, 'red': 1, 'black': 1},
-             income=income_effect(2, 'blue'),
+             income=fixed_income(blue=2),
              abilities=[
-                 ability([tap_cost()], [gain_per_opponent_effect('blue', 'red')]),
+                 ability([tap_cost()], [gain_per_opponent_effect(BLUE, RED)]),
              ]
          )),
 
@@ -444,7 +549,7 @@ ARTIFACTS = [
     Card("Magical Shard", CardType.ARTIFACT,
          effects=CardEffects(
              abilities=[
-                 ability([tap_cost()], [gain_choice_effect(1, 'red', 'blue', 'green', 'black')]),
+                 ability([tap_cost()], [gain_choice_effect(1, RED, BLUE, GREEN, BLACK)]),
              ]
          )),
 
@@ -452,12 +557,12 @@ ARTIFACTS = [
     Card("Mermaid", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 2, 'green': 2},
-             income=income_effect(1, 'blue'),
+             income=fixed_income(blue=1),
              abilities=[
                  # Three separate abilities for each resource type
-                 ability([tap_cost(), pay_cost(blue=1)], [add_to_other_card_effect('blue')]),
-                 ability([tap_cost(), pay_cost(green=1)], [add_to_other_card_effect('green')]),
-                 ability([tap_cost(), pay_cost(gold=1)], [add_to_other_card_effect('gold')]),
+                 ability([tap_cost(), pay_cost(blue=1)], [add_to_other_card_effect(BLUE)]),
+                 ability([tap_cost(), pay_cost(green=1)], [add_to_other_card_effect(GREEN)]),
+                 ability([tap_cost(), pay_cost(gold=1)], [add_to_other_card_effect(GOLD)]),
              ]
          ),
          tags={'animal'}),
@@ -477,12 +582,13 @@ ARTIFACTS = [
          ),
          points=1),
 
-    # Prism: tap+1 any → 2 non-gold, tap+X of one → X of different non-gold
+    # Prism: tap+1 any → 2 non-gold, tap+X of one color → X of different non-gold
     Card("Prism", CardType.ARTIFACT,
          effects=CardEffects(
              abilities=[
-                 ability([tap_cost(), pay_cost(any=1)], [gain_choice_effect(2, 'red', 'blue', 'green', 'black')]),
-                 ability([tap_cost()], [AbilityEffect(effect_type='exchange', target='non_gold')]),
+                 ability([tap_cost(), pay_cost(any=1)], [gain_choice_effect(2, RED, BLUE, GREEN, BLACK)]),
+                 ability([tap_cost(), pay_variable_cost(1, True, RED, BLUE, GREEN, BLACK)],
+                        [gain_from_paid_effect(RED, BLUE, GREEN, BLACK, different_from_paid=True)]),
              ]
          )),
 
@@ -523,9 +629,9 @@ ARTIFACTS = [
     Card("Treant", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'green': 3, 'red': 2},
-             income=income_effect(2, 'green'),
+             income=fixed_income(green=2),
              abilities=[
-                 ability([tap_cost()], [gain_per_opponent_effect('red', 'black')]),
+                 ability([tap_cost()], [gain_per_opponent_effect(RED, BLACK)]),
              ]
          ),
          tags={'animal'}),
@@ -536,15 +642,16 @@ ARTIFACTS = [
              cost={'green': 1, 'any': 2},
              abilities=[
                  ability([tap_cost()], [gain_effect(green=3), give_opponents_effect(green=1)]),
-                 reaction('attacked', [pay_cost(green=1)], [ignore_attack_effect()]),
+                 reaction(TriggerType.ATTACKED, [pay_cost(green=1)], [ignore_attack_effect()]),
              ]
          )),
 
     # Vault: tap → add gold to card, conditional income: if gold left on card, gain 2 non-gold
+    # TODO: Conditional income not implemented - requires checking if gold was left on card
     Card("Vault", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'gold': 1, 'any': 1},
-             income=income_effect(2, 'red', 'blue', 'green', 'black', conditional=True),
+             # income not implemented - conditional on gold being left on card
              abilities=[
                  ability([tap_cost()], [add_to_card_effect(gold=1)]),
              ]
@@ -571,14 +678,14 @@ ARTIFACTS = [
          tags={'dragon'}, points=1),
 
     # Windup Man: tap → add 1 any to card
-    # Conditional income: if resources left, add 2 of each type on card
+    # Conditional income: if resources left, add 2 of each type already on card
+    # TODO: Income not implemented - requires special effect that checks resources on card
     Card("Windup Man", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'red': 1, 'green': 1, 'blue': 1, 'gold': 1},
-             income=income_effect(2, 'red', 'blue', 'green', 'black', 'gold',
-                                  conditional=True, add_to_card=True),
+             # income not implemented - complex conditional that adds 2 of each type present
              abilities=[
-                 ability([tap_cost()], [add_to_card_choice_effect(1, 'red', 'blue', 'green', 'black', 'gold')]),
+                 ability([tap_cost()], [add_to_card_choice_effect(1, RED, BLUE, GREEN, BLACK, GOLD)]),
              ]
          )),
 
@@ -599,18 +706,18 @@ ARTIFACTS = [
              cost={'black': 1, 'green': 1},
              abilities=[
                  ability([pay_cost(black=1, red=1, green=1)], [add_to_card_effect(gold=2)]),
-                 ability([tap_cost(), tap_card_cost('dragon')], [gain_effect(gold=1)]),
+                 ability([tap_cost(), tap_card_cost(DRAGON)], [gain_effect(gold=1)]),
              ]
          ),
          tags={'demon'}),
 
-    # Golden Lion: animal, 1 pt, income blue+green+red, reaction attacked: tap → ignore
+    # Golden Lion: animal, 1 pt, income 1 blue + 1 green + 1 red, reaction attacked: tap → ignore
     Card("Golden Lion", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'red': 2, 'green': 1, 'blue': 1, 'gold': 1},
-             income=income_effect(1, 'blue', 'green', 'red'),
+             income=fixed_income(blue=1, green=1, red=1),
              abilities=[
-                 reaction('attacked', [tap_cost()], [ignore_attack_effect()]),
+                 reaction(TriggerType.ATTACKED, [tap_cost()], [ignore_attack_effect()]),
              ]
          ),
          tags={'animal'}, points=1),
@@ -619,22 +726,22 @@ ARTIFACTS = [
     Card("Homunculus", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'green': 1},
-             passives=[passive('cost_reduction', card_filter='demon', amount=2, reduction_type='any')],
+             passives=[passive_cost_reduction(DEMON, 2, 'any')],
              abilities=[
-                 ability([tap_cost()], [add_to_card_choice_effect(2, 'red', 'blue', 'green', 'black')]),
+                 ability([tap_cost()], [add_to_card_choice_effect(2, RED, BLUE, GREEN, BLACK)]),
              ]
          ),
-         tags={'demon'}),
+         tags={DEMON}),
 
     # Hound of Death: demon+animal, income 2 black
     # tap+1 green → attack 2 green, tap → gain black equal to max gold among opponents
     Card("Hound of Death", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'green': 3, 'black': 2},
-             income=income_effect(2, 'black'),
+             income=fixed_income(black=2),
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)], [attack_effect(2, None)]),
-                 ability([tap_cost()], [gain_per_opponent_effect('black', 'gold')]),
+                 ability([tap_cost()], [gain_per_opponent_effect(BLACK, GOLD)]),
              ]
          ),
          tags={'demon', 'animal'}),
@@ -644,7 +751,7 @@ ARTIFACTS = [
     Card("Infernal Engine", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'black': 1},
-             income=income_effect(1, 'red'),
+             income=fixed_income(red=1),
              abilities=[
                  ability([tap_cost()], [take_from_card_effect()]),
                  ability([tap_cost(), pay_cost(any=1)],
@@ -658,8 +765,8 @@ ARTIFACTS = [
          effects=CardEffects(
              cost={'black': 1, 'red': 1, 'gold': 1},
              abilities=[
-                 ability([tap_cost()], [gain_per_opponent_count_effect('red', 'demon')]),
-                 reaction('attacked', [], [ignore_attack_effect()], trigger_filter='demon'),
+                 ability([tap_cost()], [gain_per_opponent_count_effect(RED, DEMON)]),
+                 reaction(TriggerType.ATTACKED, [], [ignore_attack_effect()], trigger_filter=DEMON),
              ]
          ),
          tags={'demon'}, points=1),
@@ -668,10 +775,10 @@ ARTIFACTS = [
     Card("Prismatic Dragon", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'green': 2, 'blue': 2, 'red': 2},
-             income=income_effect(1, 'red', 'blue', 'green', 'black'),
+             income=choice_income(1, RED, BLUE, GREEN, BLACK),
              abilities=[
                  ability([tap_cost(), pay_cost(gold=1)],
-                        [add_to_card_choice_effect(4, 'red', 'blue', 'green', 'black')]),
+                        [add_to_card_choice_effect(4, RED, BLUE, GREEN, BLACK)]),
              ]
          ),
          tags={'dragon'}, points=1),
@@ -681,7 +788,7 @@ ARTIFACTS = [
     Card("Shadowy Figure", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'blue': 2, 'black': 2},
-             income=income_effect(1, 'blue'),
+             income=fixed_income(blue=1),
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)], [gain_effect(blue=3)]),
                  ability([tap_cost(), pay_cost(blue=1)],
@@ -696,7 +803,7 @@ ARTIFACTS = [
          effects=CardEffects(
              abilities=[
                  ability([tap_cost(), pay_cost(black=1)], [gain_effect(green=1, red=1)]),
-                 reaction('artifact_destroyed', [], [gain_choice_effect(1, 'red', 'blue', 'green')]),
+                 reaction(TriggerType.ARTIFACT_DESTROYED, [], [gain_choice_effect(1, RED, BLUE, GREEN)]),
              ]
          )),
 
@@ -705,7 +812,7 @@ ARTIFACTS = [
     Card("Vortex of Destruction", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'green': 2, 'red': 2, 'black': 1},
-             income=income_effect(1, 'black', 'red'),
+             income=fixed_income(black=1, red=1),
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)], [gain_effect(black=3)]),
                  ability([tap_cost(), destroy_artifact_cost(must_be_different=True)],
@@ -718,7 +825,7 @@ ARTIFACTS = [
     Card("Fire Demon", CardType.ARTIFACT,
          effects=CardEffects(
              cost={'red': 2, 'black': 2},
-             income=income_effect(1, 'red'),
+             income=fixed_income(red=1),
              abilities=[
                  ability([tap_cost(), pay_cost(green=1)], [gain_effect(red=3)]),
                  ability([tap_cost(), pay_cost(red=1)], [attack_effect(2, None)]),
