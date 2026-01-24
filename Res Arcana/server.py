@@ -21,7 +21,11 @@ from game_logic import (
     # Action phase
     get_current_player, player_pass, player_play_card,
     player_buy_place_of_power, player_buy_monument, player_discard_card,
-    can_afford_cost
+    can_afford_cost,
+    # Abilities
+    get_activatable_abilities, use_ability, get_passive_cost_reduction,
+    # Victory
+    calculate_player_points, calculate_player_resources_value
 )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
@@ -212,6 +216,11 @@ def bot_handle_action(game: GameState, player_id: int):
     # Gather possible actions
     possible_actions = []
 
+    # Check for usable abilities
+    abilities = get_activatable_abilities(game, player_id)
+    if abilities:
+        possible_actions.append(('use_ability', abilities))
+
     # Check for playable cards in hand
     playable_cards = []
     for card in player.hand:
@@ -249,19 +258,37 @@ def bot_handle_action(game: GameState, player_id: int):
     # If no possible actions, must pass
     if not possible_actions:
         print(f"Bot {player_id} passing (no actions available)", flush=True)
-        player_pass(game, player_id)
+        # Pick a random magic item from the center
+        if game.available_magic_items:
+            new_item = random.choice(game.available_magic_items)
+            player_pass(game, player_id, new_item.name)
+        else:
+            player_pass(game, player_id)
         return
 
     # Random chance to pass even if actions available (to end rounds eventually)
     if random.random() < 0.3:
         print(f"Bot {player_id} passing (choosing to pass)", flush=True)
-        player_pass(game, player_id)
+        # Pick a random magic item from the center
+        if game.available_magic_items:
+            new_item = random.choice(game.available_magic_items)
+            player_pass(game, player_id, new_item.name)
+        else:
+            player_pass(game, player_id)
         return
 
     # Pick a random action type
     action_type, options = random.choice(possible_actions)
 
-    if action_type == 'play_card':
+    if action_type == 'use_ability':
+        ability_info = random.choice(options)
+        card_name = ability_info['card_name']
+        ability_index = ability_info['ability_index']
+        print(f"Bot {player_id} using ability on {card_name} (index {ability_index})", flush=True)
+        # Simple ability use without complex choices
+        use_ability(game, player_id, card_name, ability_index)
+
+    elif action_type == 'play_card':
         card = random.choice(options)
         print(f"Bot {player_id} playing card: {card.name}", flush=True)
         player_play_card(game, player_id, card.name)
@@ -300,12 +327,89 @@ def bot_handle_action(game: GameState, player_id: int):
             player_discard_card(game, player_id, card.name, gain_resources=gain)
 
 
+def ability_cost_to_dict(cost) -> dict:
+    """Convert an AbilityCost to a JSON-serializable dict."""
+    result = {'costType': cost.cost_type}
+    if cost.resources:
+        result['resources'] = cost.resources
+    if cost.tag:
+        result['tag'] = cost.tag
+    if cost.cost_type == 'destroy_artifact':
+        result['mustBeDifferent'] = cost.must_be_different
+    return result
+
+
+def ability_effect_to_dict(effect) -> dict:
+    """Convert an AbilityEffect to a JSON-serializable dict."""
+    result = {'effectType': effect.effect_type}
+    if effect.resources:
+        result['resources'] = effect.resources
+    if effect.count is not None:
+        result['count'] = effect.count
+    if effect.types:
+        result['types'] = effect.types
+    if effect.green_cost is not None:
+        result['greenCost'] = effect.green_cost
+    if effect.avoid_cost is not None:
+        result['avoidCost'] = effect.avoid_cost
+    if effect.target:
+        result['target'] = effect.target
+    if effect.source:
+        result['source'] = effect.source
+    if effect.discount is not None:
+        result['discount'] = effect.discount
+    if effect.free:
+        result['free'] = effect.free
+    if effect.card_filter:
+        result['cardFilter'] = effect.card_filter
+    if effect.check_resource:
+        result['checkResource'] = effect.check_resource
+    if effect.check_tag:
+        result['checkTag'] = effect.check_tag
+    if effect.bonus:
+        result['bonus'] = effect.bonus
+    return result
+
+
+def ability_to_dict(ability) -> dict:
+    """Convert an Ability to a JSON-serializable dict."""
+    result = {
+        'costs': [ability_cost_to_dict(c) for c in ability.costs],
+        'effects': [ability_effect_to_dict(e) for e in ability.effects]
+    }
+    if ability.trigger:
+        result['trigger'] = ability.trigger
+    if ability.trigger_filter:
+        result['triggerFilter'] = ability.trigger_filter
+    return result
+
+
+def passive_to_dict(passive) -> dict:
+    """Convert a PassiveEffect to a JSON-serializable dict."""
+    result = {'effectType': passive.effect_type}
+    if passive.card_filter:
+        result['cardFilter'] = passive.card_filter
+    if passive.amount:
+        result['amount'] = passive.amount
+    if passive.reduction_type:
+        result['reductionType'] = passive.reduction_type
+    return result
+
+
 def card_to_dict(card: Card) -> dict:
     """Convert a Card to a JSON-serializable dict."""
     result = {
         'name': card.name,
         'cardType': card.card_type.value
     }
+
+    # Include tags if present
+    if card.tags:
+        result['tags'] = list(card.tags)
+
+    # Include points if non-zero
+    if card.points:
+        result['points'] = card.points
 
     # Include effects if present
     if card.effects:
@@ -314,10 +418,16 @@ def card_to_dict(card: Card) -> dict:
             income = card.effects.income
             effects['income'] = {
                 'count': income.count,
-                'types': income.types
+                'types': income.types,
+                'conditional': income.conditional,
+                'addToCard': income.add_to_card
             }
         if card.effects.cost:
             effects['cost'] = card.effects.cost
+        if card.effects.abilities:
+            effects['abilities'] = [ability_to_dict(a) for a in card.effects.abilities]
+        if card.effects.passives:
+            effects['passives'] = [passive_to_dict(p) for p in card.effects.passives]
         if effects:
             result['effects'] = effects
 
@@ -352,7 +462,10 @@ def player_to_dict(player, viewing_player_id: int = None) -> dict:
         'discard': [card_to_dict(c) for c in player.discard],
         'resources': {k.value: v for k, v in player.resources.items()},
         'hasFirstPlayerToken': player.has_first_player_token,
-        'firstPlayerTokenFaceUp': player.first_player_token_face_up
+        'firstPlayerTokenFaceUp': player.first_player_token_face_up,
+        # Victory point info
+        'points': calculate_player_points(player),
+        'resourceValue': calculate_player_resources_value(player)
     }
 
     # Hand and deck: show contents only to owning player
@@ -499,7 +612,7 @@ def game_state_to_dict(game: GameState, viewing_player_id: int = None) -> dict:
     - Other players' hands and decks
     - Other players' mage options and draft cards
     """
-    return {
+    result = {
         'phase': game.phase.value if game.phase else None,
         'players': [player_to_dict(p, viewing_player_id) for p in game.players],
         'draftState': draft_state_to_dict(game.draft_state, viewing_player_id),
@@ -512,6 +625,12 @@ def game_state_to_dict(game: GameState, viewing_player_id: int = None) -> dict:
         'monumentDeck': [{} for _ in game.monument_deck],  # Hidden contents
         'monumentDeckCount': len(game.monument_deck)
     }
+
+    # Include victory result if game is over
+    if game.victory_result:
+        result['victoryResult'] = game.victory_result
+
+    return result
 
 
 # Serve static files
@@ -826,7 +945,9 @@ def income_finalize():
 def action_pass():
     """Player passes for the rest of the round.
 
-    Body: {playerId}
+    Body: {playerId, newMagicItem?: string}
+    When passing, player must swap their magic item with one from the center.
+    If newMagicItem not specified, takes the first available item.
     If first player token is face-up, passing player takes it (face-down).
     """
     global current_game
@@ -836,10 +957,11 @@ def action_pass():
 
     data = request.get_json()
     player_id = data.get('playerId')
+    new_magic_item = data.get('newMagicItem')
 
     with game_lock:
-        if not player_pass(current_game, player_id):
-            return jsonify({'error': 'Cannot pass (not your turn or already passed)'}), 400
+        if not player_pass(current_game, player_id, new_magic_item):
+            return jsonify({'error': 'Cannot pass (not your turn, already passed, or invalid magic item)'}), 400
 
         return jsonify(game_state_to_dict(current_game, player_id))
 
@@ -941,6 +1063,90 @@ def action_discard_card():
             return jsonify({'error': 'Cannot discard card (not your turn, card not in hand, or invalid resource choice)'}), 400
 
         return jsonify(game_state_to_dict(current_game, player_id))
+
+
+# Ability endpoints
+
+@app.route('/api/action/get-abilities', methods=['GET'])
+def action_get_abilities():
+    """Get all abilities the player can currently activate.
+
+    Query params: playerId
+    Returns list of {cardName, abilityIndex, costs, effects}
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    player_id = int(request.args.get('playerId', 0))
+
+    with game_lock:
+        abilities = get_activatable_abilities(current_game, player_id)
+        # Convert costs and effects to dicts
+        result = []
+        for ab in abilities:
+            result.append({
+                'cardName': ab['card_name'],
+                'abilityIndex': ab['ability_index'],
+                'costs': [ability_cost_to_dict(c) for c in ab['costs']],
+                'effects': [ability_effect_to_dict(e) for e in ab['effects']]
+            })
+        return jsonify({'abilities': result})
+
+
+@app.route('/api/action/use-ability', methods=['POST'])
+def action_use_ability():
+    """Use an ability on a card.
+
+    Body: {
+        playerId,
+        cardName,
+        abilityIndex,
+        costChoices?: {
+            tap_card?: string,        // card name to tap
+            destroy_artifact?: string, // artifact name to destroy
+            discard?: string,         // card name to discard
+            any_payment?: {red: 1, ...} // how to pay 'any' costs
+        },
+        effectChoices?: {
+            resource_choices?: {red: 1, blue: 1}, // for choice effects
+            untap_target?: string,    // card name for untap effects
+            add_to_card_target?: string, // target for add_to_card
+            take_from_card_target?: string, // target for take_from_card
+            play_card?: string,       // card name for play_card effects
+            attack_responses?: {      // for attacks
+                [playerId]: 'pay' | 'avoid' | 'reaction',
+                [playerId + '_avoid']?: {discard?: string, destroy_artifact?: string}
+            }
+        }
+    }
+    """
+    global current_game
+
+    if current_game is None:
+        return jsonify({'error': 'No game in progress'}), 404
+
+    data = request.get_json()
+    player_id = data.get('playerId')
+    card_name = data.get('cardName')
+    ability_index = data.get('abilityIndex', 0)
+    cost_choices = data.get('costChoices', {})
+    effect_choices = data.get('effectChoices', {})
+
+    with game_lock:
+        result = use_ability(
+            current_game, player_id, card_name, ability_index,
+            cost_choices, effect_choices
+        )
+
+        if not result.get('success', False):
+            return jsonify({'error': result.get('error', 'Failed to use ability')}), 400
+
+        # Return game state along with ability result
+        response = game_state_to_dict(current_game, player_id)
+        response['abilityResult'] = result
+        return jsonify(response)
 
 
 if __name__ == '__main__':

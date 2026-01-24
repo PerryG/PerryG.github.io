@@ -37,13 +37,29 @@ Personal GitHub Pages site hosting a thesis link, interactive visualizations, an
 
 Browser-based implementation of the board game Res Arcana.
 
-**Architecture:** Python backend (game state/logic) + JavaScript frontend (rendering)
+**Architecture:** Python/Flask backend (game state/logic) + JavaScript frontend (rendering)
 
-**To view:** Open `Res Arcana/index.html` in a browser
+**Virtual environment:** `~/venvs/general` (has Flask installed)
 
-**Current status:** Substantial progress on game state and rendering. Next: game actions and flow.
+**To run the server:**
+```bash
+~/venvs/general/bin/python "Res Arcana/server.py"
+```
+Then open http://localhost:5001 in a browser.
+
+**Current status:** Draft phase, income phase, action phase with card abilities implemented. Bot players for testing.
 
 **Files:**
 - `game_state.py` - Python data structures for game state
+- `game_logic.py` - Game rules and ability system
+- `cards.py` - Card definitions with costs, income, and abilities
+- `server.py` - Flask server with API endpoints
 - `index.html`, `style.css`, `renderer.js` - Frontend rendering
-- `sample_state.js` - Test data for development
+- `tests/` - Python test files
+
+**Running tests:**
+```bash
+cd "Res Arcana/tests"
+~/venvs/general/bin/python test_game_loop.py
+~/venvs/general/bin/python test_abilities.py
+```

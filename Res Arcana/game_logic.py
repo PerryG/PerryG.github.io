@@ -307,9 +307,9 @@ def setup_starting_hands(game: GameState) -> None:
         player.hand = drafted[:3]
         player.deck = drafted[3:]
 
-    # Clear draft state and start game
+    # Clear draft state and start first round with income phase
     game.draft_state = None
-    game.phase = GamePhase.PLAYING
+    start_income_phase(game)
 
 
 # ============================================================
@@ -623,17 +623,128 @@ def all_players_passed(game: GameState) -> bool:
 
 
 def end_action_phase(game: GameState) -> None:
-    """End the action phase and start the next round's income phase."""
+    """End the action phase, check for victory, or start next round."""
     game.action_state = None
-    # Start next round with income phase
-    start_income_phase(game)
+
+    # Check for victory
+    victory_result = check_victory(game)
+    if victory_result['game_over']:
+        game.phase = GamePhase.GAME_OVER
+        game.victory_result = victory_result
+    else:
+        # Start next round with income phase
+        start_income_phase(game)
 
 
-def player_pass(game: GameState, player_id: int) -> bool:
+def calculate_player_points(player: PlayerState) -> int:
+    """Calculate total victory points for a player.
+
+    Points come from:
+    - Points on controlled cards (artifacts, monuments, places of power)
+    - Having the first player token (1 point)
+    """
+    points = 0
+
+    # Points from controlled cards
+    for cc in player.all_controlled_cards():
+        if cc.card.name:
+            points += cc.card.points
+
+    # First player token is worth 1 point
+    if player.has_first_player_token:
+        points += 1
+
+    return points
+
+
+def calculate_player_resources_value(player: PlayerState) -> int:
+    """Calculate total resource value for tie-breaking.
+
+    Gold counts as 2, other resources count as 1.
+    """
+    value = 0
+    for rt in ResourceType:
+        count = player.resource_count(rt)
+        if rt == ResourceType.GOLD:
+            value += count * 2
+        else:
+            value += count
+    return value
+
+
+def check_victory(game: GameState) -> dict:
+    """Check if the game is over and determine the winner.
+
+    Returns a dict with:
+    - game_over: bool
+    - winner: player_id or None (tie)
+    - is_tie: bool
+    - player_scores: dict of player_id -> {points, resource_value}
+    """
+    # Calculate scores for all players
+    player_scores = {}
+    for player in game.players:
+        points = calculate_player_points(player)
+        resource_value = calculate_player_resources_value(player)
+        player_scores[player.player_id] = {
+            'points': points,
+            'resource_value': resource_value
+        }
+
+    # Check if anyone has 10+ points
+    max_points = max(s['points'] for s in player_scores.values())
+    if max_points < 10:
+        return {
+            'game_over': False,
+            'winner': None,
+            'is_tie': False,
+            'player_scores': player_scores
+        }
+
+    # Game is over - find winner(s) with most points
+    leaders = [pid for pid, s in player_scores.items() if s['points'] == max_points]
+
+    if len(leaders) == 1:
+        return {
+            'game_over': True,
+            'winner': leaders[0],
+            'is_tie': False,
+            'player_scores': player_scores
+        }
+
+    # Tie-breaker: most resources (gold counts as 2)
+    max_resources = max(player_scores[pid]['resource_value'] for pid in leaders)
+    resource_leaders = [pid for pid in leaders
+                        if player_scores[pid]['resource_value'] == max_resources]
+
+    if len(resource_leaders) == 1:
+        return {
+            'game_over': True,
+            'winner': resource_leaders[0],
+            'is_tie': False,
+            'player_scores': player_scores
+        }
+
+    # True tie
+    return {
+        'game_over': True,
+        'winner': None,
+        'is_tie': True,
+        'tied_players': resource_leaders,
+        'player_scores': player_scores
+    }
+
+
+def player_pass(game: GameState, player_id: int, new_magic_item_name: str = None) -> bool:
     """Player passes for the rest of this round.
 
-    If the first player token is face-up, the passing player takes it
-    and flips it face-down.
+    When passing:
+    - If the first player token is face-up, the passing player takes it
+      and flips it face-down.
+    - Player must swap their magic item with one from the center.
+
+    new_magic_item_name: Name of magic item to take from center.
+                         If None, takes the first available item.
     """
     if game.phase != GamePhase.PLAYING or not game.action_state:
         return False
@@ -644,15 +755,37 @@ def player_pass(game: GameState, player_id: int) -> bool:
     if game.action_state.passed.get(player_id, False):
         return False  # Already passed
 
+    # Must have magic items available to swap
+    if not game.available_magic_items:
+        return False
+
+    passing_player = game.get_player(player_id)
+
     # Handle first player token
     for player in game.players:
         if player.has_first_player_token and player.first_player_token_face_up:
             # Transfer token to passing player and flip face-down
             player.has_first_player_token = False
-            passing_player = game.get_player(player_id)
             passing_player.has_first_player_token = True
             passing_player.first_player_token_face_up = False
             break
+
+    # Swap magic items
+    if new_magic_item_name:
+        new_item = next((m for m in game.available_magic_items if m.name == new_magic_item_name), None)
+    else:
+        new_item = game.available_magic_items[0]
+
+    if not new_item:
+        return False
+
+    # Return current magic item to center
+    old_item = passing_player.magic_item.card
+    game.available_magic_items.append(old_item)
+
+    # Take new magic item
+    game.available_magic_items.remove(new_item)
+    passing_player.magic_item = ControlledCard(new_item)
 
     # Mark as passed
     game.action_state.passed[player_id] = True
@@ -764,8 +897,31 @@ def player_play_card(game: GameState, player_id: int, card_name: str,
     if not card:
         return False
 
-    # Check and pay cost
-    cost = card.effects.cost if card.effects else None
+    # Calculate cost with passive reductions
+    cost = dict(card.effects.cost) if card.effects and card.effects.cost else {}
+    if cost:
+        reduction = get_passive_cost_reduction(player, card)
+        if reduction > 0:
+            # Apply reduction to 'any' cost first, then to specific non-gold
+            remaining_reduction = reduction
+            if 'any' in cost and cost['any'] > 0:
+                reduce_by = min(cost['any'], remaining_reduction)
+                cost['any'] -= reduce_by
+                remaining_reduction -= reduce_by
+                if cost['any'] == 0:
+                    del cost['any']
+
+            # Reduce specific non-gold costs
+            for res in ['red', 'blue', 'green', 'black']:
+                if remaining_reduction <= 0:
+                    break
+                if res in cost and cost[res] > 0:
+                    reduce_by = min(cost[res], remaining_reduction)
+                    cost[res] -= reduce_by
+                    remaining_reduction -= reduce_by
+                    if cost[res] == 0:
+                        del cost[res]
+
     if cost and not can_afford_cost(player, cost):
         return False
 
@@ -779,6 +935,28 @@ def player_play_card(game: GameState, player_id: int, card_name: str,
     # Move to next player
     advance_to_next_player(game)
     return True
+
+
+def get_passive_cost_reduction(player: PlayerState, card_to_play: Card) -> int:
+    """Calculate total cost reduction from passives for playing a card.
+
+    Returns the total reduction amount (for non-gold costs).
+    """
+    reduction = 0
+
+    for cc in player.all_controlled_cards():
+        if not cc.card.effects or not cc.card.effects.passives:
+            continue
+
+        for passive in cc.card.effects.passives:
+            if passive.effect_type == 'cost_reduction':
+                # Check if filter matches
+                if passive.card_filter:
+                    if passive.card_filter not in card_to_play.tags:
+                        continue
+                reduction += passive.amount
+
+    return reduction
 
 
 def player_buy_place_of_power(game: GameState, player_id: int, pop_name: str) -> bool:
@@ -1077,3 +1255,557 @@ def get_attack_reactions(player: PlayerState, attacker_tags: set = None) -> list
                 reactions.append((cc, ability))
 
     return reactions
+
+
+# ============================================================
+# Ability System
+# ============================================================
+
+def find_controlled_card(player: PlayerState, card_name: str) -> Optional[ControlledCard]:
+    """Find a controlled card by name."""
+    for cc in player.all_controlled_cards():
+        if cc.card.name == card_name:
+            return cc
+    return None
+
+
+def get_activatable_abilities(game: GameState, player_id: int) -> List[dict]:
+    """Get all abilities the player can currently activate.
+
+    Returns list of dicts with card_name, ability_index, and ability info.
+    """
+    player = game.get_player(player_id)
+    if not player:
+        return []
+
+    result = []
+
+    for cc in player.all_controlled_cards():
+        if cc.tapped:
+            continue  # Tapped cards can't use any abilities
+
+        if not cc.card.name or not cc.card.effects or not cc.card.effects.abilities:
+            continue
+
+        for i, ability in enumerate(cc.card.effects.abilities):
+            # Skip reactions (they're triggered, not activated)
+            if ability.trigger:
+                continue
+
+            # Check if costs can be paid
+            can_pay, _ = can_pay_ability_costs(game, player, cc, ability)
+            if can_pay:
+                result.append({
+                    'card_name': cc.card.name,
+                    'ability_index': i,
+                    'costs': ability.costs,
+                    'effects': ability.effects
+                })
+
+    return result
+
+
+def can_pay_ability_costs(game: GameState, player: PlayerState,
+                          source_card: ControlledCard, ability) -> tuple:
+    """Check if player can pay all costs for an ability.
+
+    Returns (can_pay: bool, missing_info: str or None).
+    """
+    for cost in ability.costs:
+        cost_type = cost.cost_type
+
+        if cost_type == 'tap':
+            # Card must not already be tapped (already checked in get_activatable_abilities)
+            if source_card.tapped:
+                return False, "Card is already tapped"
+
+        elif cost_type == 'tap_card':
+            # Must have another untapped card (optionally with tag)
+            has_valid = False
+            for cc in player.all_controlled_cards():
+                if cc == source_card:
+                    continue
+                if cc.tapped:
+                    continue
+                if cost.tag:
+                    if cost.tag not in cc.card.tags:
+                        continue
+                has_valid = True
+                break
+            if not has_valid:
+                return False, f"No untapped card with tag {cost.tag}" if cost.tag else "No untapped card to tap"
+
+        elif cost_type == 'pay':
+            if cost.resources and not can_afford_cost(player, cost.resources):
+                return False, "Cannot afford resource cost"
+
+        elif cost_type == 'remove_from_card':
+            if cost.resources:
+                for res_str, amount in cost.resources.items():
+                    rt = ResourceType(res_str)
+                    if source_card.resource_count(rt) < amount:
+                        return False, f"Not enough {res_str} on card"
+
+        elif cost_type == 'destroy_self':
+            # Can always destroy self
+            pass
+
+        elif cost_type == 'destroy_artifact':
+            # Need at least one artifact (may or may not be self)
+            if cost.must_be_different:
+                # Need another artifact besides this one
+                other_artifacts = [a for a in player.artifacts if a != source_card]
+                if not other_artifacts:
+                    return False, "No other artifact to destroy"
+            else:
+                # Any artifact including self is fine
+                if source_card.card.card_type != CardType.ARTIFACT and not player.artifacts:
+                    return False, "No artifact to destroy"
+
+        elif cost_type == 'discard':
+            if not player.hand:
+                return False, "No cards in hand to discard"
+
+    return True, None
+
+
+def pay_ability_costs(game: GameState, player: PlayerState,
+                      source_card: ControlledCard, ability,
+                      cost_choices: Dict = None) -> bool:
+    """Pay all costs for an ability.
+
+    cost_choices can contain:
+    - 'tap_card': name of card to tap
+    - 'destroy_artifact': name of artifact to destroy
+    - 'discard': name of card to discard
+    - 'any_payment': dict for 'any' resource costs
+
+    Returns True if successful.
+    """
+    cost_choices = cost_choices or {}
+
+    for cost in ability.costs:
+        cost_type = cost.cost_type
+
+        if cost_type == 'tap':
+            source_card.tapped = True
+
+        elif cost_type == 'tap_card':
+            target_name = cost_choices.get('tap_card')
+            if target_name:
+                target = find_controlled_card(player, target_name)
+                if target and not target.tapped:
+                    if cost.tag is None or cost.tag in target.card.tags:
+                        target.tapped = True
+                    else:
+                        return False
+                else:
+                    return False
+            else:
+                return False
+
+        elif cost_type == 'pay':
+            if cost.resources:
+                any_payment = cost_choices.get('any_payment')
+                if not pay_cost(player, cost.resources, any_payment):
+                    return False
+
+        elif cost_type == 'remove_from_card':
+            if cost.resources:
+                for res_str, amount in cost.resources.items():
+                    rt = ResourceType(res_str)
+                    if not source_card.remove_resource(rt, amount):
+                        return False
+
+        elif cost_type == 'destroy_self':
+            # Remove card from player's control
+            _destroy_card(player, source_card)
+
+        elif cost_type == 'destroy_artifact':
+            target_name = cost_choices.get('destroy_artifact')
+            if target_name:
+                target = find_controlled_card(player, target_name)
+                if target and target.card.card_type == CardType.ARTIFACT:
+                    if cost.must_be_different and target == source_card:
+                        return False
+                    _destroy_card(player, target)
+                else:
+                    return False
+            else:
+                return False
+
+        elif cost_type == 'discard':
+            card_name = cost_choices.get('discard')
+            if card_name:
+                card = next((c for c in player.hand if c.name == card_name), None)
+                if card:
+                    player.hand.remove(card)
+                    player.discard.append(card)
+                else:
+                    return False
+            else:
+                return False
+
+    return True
+
+
+def _destroy_card(player: PlayerState, cc: ControlledCard) -> None:
+    """Remove a controlled card from player and add to discard."""
+    if cc in player.artifacts:
+        player.artifacts.remove(cc)
+        player.discard.append(cc.card)
+    elif cc in player.monuments:
+        player.monuments.remove(cc)
+        # Monuments don't go to discard (they're removed from game)
+    elif cc in player.places_of_power:
+        player.places_of_power.remove(cc)
+        # Places of Power don't go to discard
+
+
+def apply_ability_effects(game: GameState, player: PlayerState,
+                          source_card: ControlledCard, ability,
+                          effect_choices: Dict = None) -> Dict:
+    """Apply all effects of an ability.
+
+    effect_choices can contain:
+    - 'resource_choices': for effects with type choices (e.g., {'red': 1, 'blue': 1})
+    - 'untap_target': card name for untap effects
+    - 'attack_responses': dict of player_id -> response for attacks
+    - 'play_card': card name for play_card effects
+    - 'destroy_artifact_choice': for effects that destroy and gain from destroyed
+
+    Returns a result dict with info about what happened.
+    """
+    effect_choices = effect_choices or {}
+    result = {'success': True, 'effects_applied': []}
+
+    for effect in ability.effects:
+        effect_type = effect.effect_type
+        effect_result = {'type': effect_type}
+
+        if effect_type == 'gain':
+            if effect.resources:
+                # Fixed resources
+                for res_str, amount in effect.resources.items():
+                    rt = ResourceType(res_str)
+                    player.add_resource(rt, amount)
+                effect_result['gained'] = effect.resources
+            elif effect.count and effect.types:
+                # Choice of resources
+                chosen = effect_choices.get('resource_choices', {})
+                total = sum(chosen.values())
+                if total != effect.count:
+                    # Default to first type if not specified
+                    chosen = {effect.types[0]: effect.count}
+                for res_str, amount in chosen.items():
+                    if res_str in effect.types:
+                        rt = ResourceType(res_str)
+                        player.add_resource(rt, amount)
+                effect_result['gained'] = chosen
+
+        elif effect_type == 'add_to_card':
+            target = source_card  # Default to self
+            if effect.target == 'other':
+                target_name = effect_choices.get('add_to_card_target')
+                if target_name:
+                    target = find_controlled_card(player, target_name)
+                    if not target:
+                        target = source_card  # Fallback
+
+            if effect.resources:
+                for res_str, amount in effect.resources.items():
+                    rt = ResourceType(res_str)
+                    target.add_resource(rt, amount)
+                effect_result['added'] = effect.resources
+            elif effect.count and effect.types:
+                chosen = effect_choices.get('resource_choices', {})
+                total = sum(chosen.values())
+                if total != effect.count:
+                    chosen = {effect.types[0]: effect.count}
+                for res_str, amount in chosen.items():
+                    if res_str in effect.types:
+                        rt = ResourceType(res_str)
+                        target.add_resource(rt, amount)
+                effect_result['added'] = chosen
+
+        elif effect_type == 'add_paid_to_card':
+            # The paid resource should be tracked during cost payment
+            # For now, this is handled as part of the cost payment
+            pass
+
+        elif effect_type == 'take_from_card':
+            target_name = effect_choices.get('take_from_card_target')
+            if target_name:
+                target = find_controlled_card(player, target_name)
+                if target:
+                    taken = {}
+                    for rt, count in target.resources.items():
+                        if count > 0:
+                            player.add_resource(rt, count)
+                            taken[rt.value] = count
+                    target.resources = {}
+                    effect_result['taken'] = taken
+
+        elif effect_type == 'attack':
+            # Handle attack - need responses from all opponents
+            attack_result = _apply_attack_effect(
+                game, player, source_card, effect,
+                effect_choices.get('attack_responses', {})
+            )
+            effect_result.update(attack_result)
+
+        elif effect_type == 'draw':
+            drawn = []
+            for _ in range(effect.count or 1):
+                if player.deck:
+                    card = player.deck.pop(0)
+                    player.hand.append(card)
+                    drawn.append(card.name)
+            effect_result['drawn'] = drawn
+
+        elif effect_type == 'draw_discard':
+            # Draw cards then discard some
+            drawn = []
+            for _ in range(effect.count or 1):
+                if player.deck:
+                    card = player.deck.pop(0)
+                    player.hand.append(card)
+                    drawn.append(card.name)
+            effect_result['drawn'] = drawn
+            # Discard handled separately by player choice
+
+        elif effect_type == 'untap':
+            if effect.target == 'self':
+                source_card.tapped = False
+                effect_result['untapped'] = source_card.card.name
+            else:
+                target_name = effect_choices.get('untap_target')
+                if target_name:
+                    target = find_controlled_card(player, target_name)
+                    if target:
+                        # Check if target matches filter
+                        if effect.target in ['dragon', 'demon']:
+                            if effect.target in target.card.tags:
+                                target.tapped = False
+                                effect_result['untapped'] = target.card.name
+                        else:
+                            target.tapped = False
+                            effect_result['untapped'] = target.card.name
+
+        elif effect_type == 'convert':
+            # Convert non-gold to gold
+            converted = 0
+            for rt in [ResourceType.RED, ResourceType.BLUE, ResourceType.GREEN, ResourceType.BLACK]:
+                count = player.resource_count(rt)
+                if count > 0:
+                    player.remove_resource(rt, count)
+                    converted += count
+            player.add_resource(ResourceType.GOLD, converted)
+            effect_result['converted'] = converted
+
+        elif effect_type == 'exchange':
+            # Prism-style exchange - handled separately
+            pass
+
+        elif effect_type == 'play_card':
+            card_name = effect_choices.get('play_card')
+            if card_name:
+                source_list = player.hand if effect.source == 'hand' else player.discard
+                card = next((c for c in source_list if c.name == card_name), None)
+                if card:
+                    # Check card filter
+                    if effect.card_filter and effect.card_filter not in card.tags:
+                        pass  # Don't play if doesn't match filter
+                    else:
+                        source_list.remove(card)
+                        player.artifacts.append(ControlledCard(card))
+                        effect_result['played'] = card_name
+
+        elif effect_type == 'gain_from_destroyed':
+            # The destroyed card's cost becomes resources + bonus
+            destroyed_name = effect_choices.get('destroyed_card_name')
+            destroyed_cost = effect_choices.get('destroyed_card_cost', {})
+            total_gained = {}
+            for res_str, amount in destroyed_cost.items():
+                rt = ResourceType(res_str)
+                player.add_resource(rt, amount)
+                total_gained[res_str] = amount
+            # Add bonus
+            if effect.bonus:
+                # Bonus is 1 of any non-gold
+                bonus_res = effect_choices.get('bonus_resource', 'red')
+                rt = ResourceType(bonus_res)
+                player.add_resource(rt, effect.bonus)
+                total_gained[bonus_res] = total_gained.get(bonus_res, 0) + effect.bonus
+            effect_result['gained'] = total_gained
+
+        elif effect_type == 'gain_from_discarded':
+            # Similar to gain_from_destroyed but for discarded cards
+            discarded_cost = effect_choices.get('discarded_card_cost', {})
+            for res_str, amount in discarded_cost.items():
+                rt = ResourceType(res_str)
+                player.add_resource(rt, amount)
+            effect_result['gained'] = discarded_cost
+
+        elif effect_type == 'give_opponents':
+            if effect.resources:
+                for other_player in game.players:
+                    if other_player.player_id != player.player_id:
+                        for res_str, amount in effect.resources.items():
+                            rt = ResourceType(res_str)
+                            other_player.add_resource(rt, amount)
+                effect_result['gave'] = effect.resources
+
+        elif effect_type == 'reorder_deck':
+            # This requires UI interaction for reordering
+            effect_result['needs_reorder'] = True
+            effect_result['count'] = effect.count
+            effect_result['deck'] = effect.deck
+
+        elif effect_type == 'gain_per_opponent':
+            # Gain based on max resource among opponents
+            max_count = 0
+            for other_player in game.players:
+                if other_player.player_id != player.player_id:
+                    if effect.check_resource:
+                        rt = ResourceType(effect.check_resource)
+                        count = other_player.resource_count(rt)
+                        max_count = max(max_count, count)
+            if max_count > 0 and effect.resources:
+                for res_str, amount in effect.resources.items():
+                    rt = ResourceType(res_str)
+                    player.add_resource(rt, max_count * amount)
+                effect_result['gained_per'] = max_count
+
+        elif effect_type == 'gain_per_opponent_count':
+            # Gain based on max card count among opponents
+            max_count = 0
+            for other_player in game.players:
+                if other_player.player_id != player.player_id:
+                    count = 0
+                    if effect.check_tag:
+                        for cc in other_player.all_controlled_cards():
+                            if effect.check_tag in cc.card.tags:
+                                count += 1
+                    max_count = max(max_count, count)
+            if max_count > 0 and effect.resources:
+                for res_str, amount in effect.resources.items():
+                    rt = ResourceType(res_str)
+                    player.add_resource(rt, max_count * amount)
+                effect_result['gained_per'] = max_count
+
+        result['effects_applied'].append(effect_result)
+
+    return result
+
+
+def _apply_attack_effect(game: GameState, attacker: PlayerState,
+                         source_card: ControlledCard, effect,
+                         responses: Dict) -> Dict:
+    """Apply an attack effect to all opponents.
+
+    responses is a dict of player_id -> response type:
+    - 'pay': pay the green cost (or penalty)
+    - 'avoid': pay the avoid cost (with additional info)
+    - 'reaction': use a reaction ability
+
+    Returns result info.
+    """
+    result = {
+        'attack': True,
+        'green_cost': effect.green_cost,
+        'attacker_tags': list(source_card.card.tags),
+        'opponent_results': {}
+    }
+
+    for opponent in game.players:
+        if opponent.player_id == attacker.player_id:
+            continue
+
+        opponent_id = opponent.player_id
+        response = responses.get(opponent_id, 'pay')
+        opponent_result = {'response': response}
+
+        if response == 'pay':
+            # Calculate and apply attack payment
+            payment = calculate_attack_payment(opponent, effect.green_cost)
+            apply_attack_payment(opponent, payment)
+            opponent_result['paid'] = payment
+
+        elif response == 'avoid' and effect.avoid_cost:
+            # Check and pay avoid cost
+            avoid_info = responses.get(f'{opponent_id}_avoid', {})
+            if can_pay_avoid_cost(opponent, effect.avoid_cost):
+                success = pay_avoid_cost(
+                    opponent, effect.avoid_cost,
+                    avoid_info.get('discard'),
+                    avoid_info.get('destroy_artifact')
+                )
+                opponent_result['avoided'] = success
+            else:
+                # Fall back to paying
+                payment = calculate_attack_payment(opponent, effect.green_cost)
+                apply_attack_payment(opponent, payment)
+                opponent_result['paid'] = payment
+
+        elif response == 'reaction':
+            # Reaction abilities handled elsewhere
+            opponent_result['used_reaction'] = True
+
+        result['opponent_results'][opponent_id] = opponent_result
+
+    return result
+
+
+def use_ability(game: GameState, player_id: int, card_name: str,
+                ability_index: int, cost_choices: Dict = None,
+                effect_choices: Dict = None) -> Dict:
+    """Activate an ability on a card.
+
+    Returns a result dict with success status and effect info.
+    """
+    if game.phase != GamePhase.PLAYING or not game.action_state:
+        return {'success': False, 'error': 'Not in playing phase'}
+
+    if game.action_state.current_player != player_id:
+        return {'success': False, 'error': 'Not your turn'}
+
+    player = game.get_player(player_id)
+    if not player:
+        return {'success': False, 'error': 'Player not found'}
+
+    cc = find_controlled_card(player, card_name)
+    if not cc:
+        return {'success': False, 'error': 'Card not found'}
+
+    if cc.tapped:
+        return {'success': False, 'error': 'Card is tapped'}
+
+    if not cc.card.effects or not cc.card.effects.abilities:
+        return {'success': False, 'error': 'Card has no abilities'}
+
+    if ability_index < 0 or ability_index >= len(cc.card.effects.abilities):
+        return {'success': False, 'error': 'Invalid ability index'}
+
+    ability = cc.card.effects.abilities[ability_index]
+
+    # Check this is not a reaction
+    if ability.trigger:
+        return {'success': False, 'error': 'Cannot activate reactions as actions'}
+
+    # Check costs can be paid
+    can_pay, error = can_pay_ability_costs(game, player, cc, ability)
+    if not can_pay:
+        return {'success': False, 'error': error}
+
+    # Pay costs
+    if not pay_ability_costs(game, player, cc, ability, cost_choices):
+        return {'success': False, 'error': 'Failed to pay costs'}
+
+    # Apply effects
+    result = apply_ability_effects(game, player, cc, ability, effect_choices)
+
+    # Advance to next player
+    advance_to_next_player(game)
+
+    return result

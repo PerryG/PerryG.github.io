@@ -859,3 +859,289 @@ body.debug-collapsed {
 .player-status.done {
     color: #4ecca3;
 }
+
+/* ============================================================
+   Action Phase Styles
+   ============================================================ */
+
+#action-section {
+    background-color: #16213e;
+    border: 2px solid #9b59b6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+#action-title {
+    margin: 0 0 10px 0;
+    color: #9b59b6;
+    font-size: 20px;
+}
+
+#action-instructions {
+    color: #888;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+#action-actions {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+#action-actions button {
+    padding: 10px 25px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#action-pass-btn {
+    background-color: #e74c3c;
+    color: white;
+    font-weight: bold;
+}
+
+#action-pass-btn:hover:not(:disabled) {
+    background-color: #c0392b;
+}
+
+#action-pass-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#action-status {
+    padding: 10px;
+    background-color: #1a1a2e;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.player-status.passed {
+    color: #e74c3c;
+}
+
+.player-status.current {
+    color: #9b59b6;
+    font-weight: bold;
+}
+
+/* ============================================================
+   Card Details (Tags, Points, Abilities)
+   ============================================================ */
+
+.card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-bottom: 3px;
+    justify-content: center;
+}
+
+.tag {
+    font-size: 7px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.tag-dragon {
+    background-color: #c0392b;
+    color: white;
+}
+
+.tag-demon {
+    background-color: #8e44ad;
+    color: white;
+}
+
+.tag-animal {
+    background-color: #27ae60;
+    color: white;
+}
+
+.card-points {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    font-size: 9px;
+    background-color: #f39c12;
+    color: #1a1a2e;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+.card-cost {
+    font-size: 9px;
+    text-align: center;
+    color: #aaa;
+    margin-top: 3px;
+}
+
+/* Ability buttons on cards */
+.ability-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: auto;
+    padding-top: 5px;
+}
+
+.ability-btn {
+    font-size: 8px;
+    padding: 3px 5px;
+    border: 1px solid #4ecca3;
+    border-radius: 3px;
+    background-color: rgba(78, 204, 163, 0.15);
+    color: #4ecca3;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ability-btn:hover:not(:disabled) {
+    background-color: rgba(78, 204, 163, 0.3);
+    transform: scale(1.02);
+}
+
+.ability-btn.disabled,
+.ability-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #555;
+    color: #555;
+}
+
+/* Hand card styling */
+.hand-card {
+    position: relative;
+}
+
+.hand-card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: auto;
+    padding-top: 5px;
+}
+
+.play-btn, .discard-btn, .buy-btn {
+    font-size: 9px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.play-btn {
+    background-color: #4ecca3;
+    color: #1a1a2e;
+    font-weight: bold;
+}
+
+.play-btn:hover {
+    background-color: #3dbb92;
+}
+
+.discard-btn {
+    background-color: #6c757d;
+    color: white;
+    font-size: 8px;
+}
+
+.discard-btn:hover {
+    background-color: #5a6268;
+}
+
+/* Buyable cards (Places of Power, Monuments) */
+.card.buyable {
+    cursor: pointer;
+    border-color: #f39c12 !important;
+}
+
+.buy-btn {
+    background-color: #f39c12;
+    color: #1a1a2e;
+    font-weight: bold;
+    width: 100%;
+}
+
+.buy-btn:hover {
+    background-color: #e67e22;
+}
+
+/* Buyable deck */
+.deck.buyable {
+    cursor: pointer;
+    border-color: #f39c12 !important;
+    border-style: solid !important;
+}
+
+.deck.buyable:hover {
+    background-color: rgba(243, 156, 18, 0.1);
+}
+
+/* Game Over Screen */
+.game-result {
+    font-size: 24px;
+    font-weight: bold;
+    color: #4ecca3;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.standings {
+    width: 100%;
+    max-width: 400px;
+    margin: 20px auto;
+    border-collapse: collapse;
+    background-color: #1a1a2e;
+}
+
+.standings th,
+.standings td {
+    padding: 10px 15px;
+    text-align: center;
+    border: 1px solid #333;
+}
+
+.standings th {
+    background-color: #16213e;
+    color: #4ecca3;
+    font-weight: bold;
+}
+
+.standings tr.winner {
+    background-color: rgba(78, 204, 163, 0.2);
+}
+
+.standings tr.winner td {
+    color: #4ecca3;
+    font-weight: bold;
+}
+
+.new-game-btn {
+    display: block;
+    margin: 20px auto;
+    padding: 15px 30px;
+    font-size: 18px;
+    background-color: #4ecca3;
+    color: #1a1a2e;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.new-game-btn:hover {
+    background-color: #3cb38c;
+}

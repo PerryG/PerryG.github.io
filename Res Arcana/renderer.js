@@ -17,7 +17,8 @@ const GamePhase = {
     MAGE_SELECTION: 'mage_selection',
     MAGIC_ITEM_SELECTION: 'magic_item_selection',
     INCOME: 'income',
-    PLAYING: 'playing'
+    PLAYING: 'playing',
+    GAME_OVER: 'game_over'
 };
 
 // Current game state and viewing player (for interaction handlers)
@@ -127,6 +128,75 @@ async function apiIncomeFinalize(playerId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId })
+    });
+    return response.json();
+}
+
+// Action phase API functions
+async function apiActionPass(playerId, newMagicItem = null) {
+    const body = { playerId };
+    if (newMagicItem) body.newMagicItem = newMagicItem;
+    const response = await fetch('/api/action/pass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return response.json();
+}
+
+async function apiActionPlayCard(playerId, cardName, anyPayment = null) {
+    const body = { playerId, cardName };
+    if (anyPayment) body.anyPayment = anyPayment;
+    const response = await fetch('/api/action/play-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return response.json();
+}
+
+async function apiActionBuyPlaceOfPower(playerId, popName) {
+    const response = await fetch('/api/action/buy-place-of-power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, popName })
+    });
+    return response.json();
+}
+
+async function apiActionBuyMonument(playerId, monumentName = null, fromDeck = false) {
+    const body = { playerId, fromDeck };
+    if (monumentName) body.monumentName = monumentName;
+    const response = await fetch('/api/action/buy-monument', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return response.json();
+}
+
+async function apiActionDiscardCard(playerId, cardName, gainGold = false, gainResources = null) {
+    const body = { playerId, cardName };
+    if (gainGold) body.gainGold = true;
+    if (gainResources) body.gainResources = gainResources;
+    const response = await fetch('/api/action/discard-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return response.json();
+}
+
+async function apiGetAbilities(playerId) {
+    const response = await fetch(`/api/action/get-abilities?playerId=${playerId}`);
+    return response.json();
+}
+
+async function apiUseAbility(playerId, cardName, abilityIndex, costChoices = {}, effectChoices = {}) {
+    const response = await fetch('/api/action/use-ability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, cardName, abilityIndex, costChoices, effectChoices })
     });
     return response.json();
 }
@@ -254,17 +324,131 @@ function renderFixedSlots(availableItems, allItemNames) {
 }
 
 /**
+ * Format an ability cost for display
+ */
+function formatAbilityCost(cost) {
+    switch (cost.costType) {
+        case 'tap':
+            return 'Tap';
+        case 'tap_card':
+            return cost.tag ? `Tap ${cost.tag}` : 'Tap card';
+        case 'pay':
+            if (cost.resources) {
+                return Object.entries(cost.resources)
+                    .map(([type, count]) => `${count}${type[0].toUpperCase()}`)
+                    .join('');
+            }
+            return 'Pay';
+        case 'remove_from_card':
+            if (cost.resources) {
+                return Object.entries(cost.resources)
+                    .map(([type, count]) => `-${count}${type[0].toUpperCase()}`)
+                    .join('');
+            }
+            return 'Remove';
+        case 'destroy_self':
+            return 'Destroy self';
+        case 'destroy_artifact':
+            return 'Destroy artifact';
+        case 'discard':
+            return 'Discard';
+        default:
+            return cost.costType;
+    }
+}
+
+/**
+ * Format an ability effect for display
+ */
+function formatAbilityEffect(effect) {
+    switch (effect.effectType) {
+        case 'gain':
+            if (effect.resources) {
+                return '+' + Object.entries(effect.resources)
+                    .map(([type, count]) => `${count}${type[0].toUpperCase()}`)
+                    .join('');
+            }
+            if (effect.count && effect.types) {
+                return `+${effect.count} ${effect.types.join('/')}`;
+            }
+            return 'Gain';
+        case 'add_to_card':
+            if (effect.resources) {
+                return 'Store ' + Object.entries(effect.resources)
+                    .map(([type, count]) => `${count}${type[0].toUpperCase()}`)
+                    .join('');
+            }
+            return 'Add to card';
+        case 'attack':
+            return `Attack ${effect.greenCost}G`;
+        case 'draw':
+            return `Draw ${effect.count || 1}`;
+        case 'untap':
+            return effect.target === 'self' ? 'Untap' : `Untap ${effect.target}`;
+        case 'convert':
+            return 'Convert to gold';
+        case 'give_opponents':
+            return 'Give opponents';
+        default:
+            return effect.effectType;
+    }
+}
+
+/**
+ * Create HTML for ability buttons on a card
+ */
+function renderAbilityButtons(card, cardName, isMyTurn, isTapped) {
+    if (!card.effects?.abilities) return '';
+
+    const abilities = card.effects.abilities.filter(a => !a.trigger); // Only show activated abilities, not reactions
+    if (abilities.length === 0) return '';
+
+    return `<div class="ability-buttons">${abilities.map((ability, index) => {
+        const costs = ability.costs.map(formatAbilityCost).join(', ');
+        const effects = ability.effects.map(formatAbilityEffect).join(', ');
+        const disabled = !isMyTurn || isTapped;
+        const disabledClass = disabled ? 'disabled' : '';
+
+        return `
+            <button class="ability-btn ${disabledClass}"
+                    onclick="event.stopPropagation(); useAbility('${cardName}', ${index})"
+                    ${disabled ? 'disabled' : ''}
+                    title="${costs} → ${effects}">
+                ${effects}
+            </button>
+        `;
+    }).join('')}</div>`;
+}
+
+/**
  * Create HTML for a single card
  */
-function renderCard(card, controlled = null) {
+function renderCard(card, controlled = null, showAbilities = false, isMyTurn = false) {
     const tappedClass = controlled?.tapped ? 'tapped' : '';
     const typeClass = card.cardType;
     const resourcesHtml = controlled ? renderCardResources(controlled.resources) : '';
 
+    // Show tags and points if present
+    let tagsHtml = '';
+    if (card.tags && card.tags.length > 0) {
+        tagsHtml = `<div class="card-tags">${card.tags.map(t => `<span class="tag tag-${t}">${t}</span>`).join('')}</div>`;
+    }
+
+    let pointsHtml = '';
+    if (card.points) {
+        pointsHtml = `<div class="card-points">${card.points} VP</div>`;
+    }
+
+    // Show abilities if enabled
+    const abilitiesHtml = showAbilities ? renderAbilityButtons(card, card.name, isMyTurn, controlled?.tapped) : '';
+
     return `
         <div class="card ${typeClass} ${tappedClass}">
             <div class="card-name">${card.name}</div>
+            ${tagsHtml}
+            ${pointsHtml}
             ${resourcesHtml}
+            ${abilitiesHtml}
         </div>
     `;
 }
@@ -272,37 +456,37 @@ function renderCard(card, controlled = null) {
 /**
  * Create HTML for a controlled card (card on table with state)
  */
-function renderControlledCard(controlledCard) {
-    return renderCard(controlledCard.card, controlledCard);
+function renderControlledCard(controlledCard, showAbilities = false, isMyTurn = false) {
+    return renderCard(controlledCard.card, controlledCard, showAbilities, isMyTurn);
 }
 
 /**
  * Render all controlled cards for a player
  */
-function renderControlledCards(player) {
+function renderControlledCards(player, showAbilities = false, isMyTurn = false) {
     let html = '';
 
     // Mage and Magic Item first (skip if empty/placeholder)
     if (player.mage?.card?.name) {
-        html += renderControlledCard(player.mage);
+        html += renderControlledCard(player.mage, showAbilities, isMyTurn);
     }
     if (player.magicItem?.card?.name) {
-        html += renderControlledCard(player.magicItem);
+        html += renderControlledCard(player.magicItem, showAbilities, isMyTurn);
     }
 
     // Then artifacts
     for (const artifact of player.artifacts) {
-        html += renderControlledCard(artifact);
+        html += renderControlledCard(artifact, showAbilities, isMyTurn);
     }
 
     // Then places of power
     for (const pop of player.placesOfPower) {
-        html += renderControlledCard(pop);
+        html += renderControlledCard(pop, showAbilities, isMyTurn);
     }
 
     // Then monuments
     for (const monument of player.monuments) {
-        html += renderControlledCard(monument);
+        html += renderControlledCard(monument, showAbilities, isMyTurn);
     }
 
     return html;
@@ -322,7 +506,8 @@ function renderFirstPlayerToken(player) {
  */
 function renderOpponentArea(opponent, index) {
     const playerNum = opponent.playerId + 1;  // 1-indexed for display
-    const label = `Player ${playerNum}`;
+    const points = opponent.points || 0;
+    const label = `Player ${playerNum} - ${points} VP`;
     return `
         <div class="player-area opponent-area" id="opponent-area-${index}">
             <div class="area-label">${label}</div>
@@ -917,8 +1102,331 @@ async function startIncomePhase() {
 }
 
 // ============================================================
+// Action Phase Rendering
+// ============================================================
+
+/**
+ * Render the action section based on current game phase
+ */
+function renderActionSection(gameState, viewingPlayerId) {
+    const section = document.getElementById('action-section');
+    if (!section) return;
+
+    // Hide section if not in playing phase
+    if (gameState.phase !== GamePhase.PLAYING || !gameState.actionState) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+
+    const actionState = gameState.actionState;
+    const currentPlayer = actionState.currentPlayer;
+    const isMyTurn = currentPlayer === viewingPlayerId;
+    const hasPassed = actionState.passed?.[viewingPlayerId] || false;
+
+    // Title and turn indicator
+    const titleEl = document.getElementById('action-title');
+    const instructionsEl = document.getElementById('action-instructions');
+
+    titleEl.textContent = 'Action Phase';
+    if (hasPassed) {
+        instructionsEl.textContent = 'You have passed. Waiting for round to end...';
+    } else if (isMyTurn) {
+        instructionsEl.textContent = 'Your turn! Play a card, use an ability, buy something, or pass.';
+    } else {
+        instructionsEl.textContent = `Waiting for Player ${currentPlayer + 1} to take their turn...`;
+    }
+
+    // Pass button
+    const passBtn = document.getElementById('action-pass-btn');
+    if (passBtn) {
+        passBtn.disabled = !isMyTurn || hasPassed;
+    }
+
+    // Show player status
+    const statusDiv = document.getElementById('action-status');
+    if (statusDiv) {
+        const statusHtml = gameState.players.map(p => {
+            const passed = actionState.passed?.[p.playerId];
+            const isCurrent = p.playerId === currentPlayer;
+            let status = passed ? 'Passed' : (isCurrent ? 'Acting...' : 'Waiting');
+            return `<span class="player-status ${passed ? 'passed' : ''} ${isCurrent ? 'current' : ''}">P${p.playerId + 1}: ${status}</span>`;
+        }).join(' | ');
+        statusDiv.innerHTML = statusHtml;
+    }
+}
+
+// ============================================================
+// Action Interaction Handlers
+// ============================================================
+
+/**
+ * Use an ability on a card
+ */
+async function useAbility(cardName, abilityIndex) {
+    if (!currentGameState) return;
+
+    console.log(`Using ability ${abilityIndex} on ${cardName}`);
+
+    const state = await apiUseAbility(currentViewingPlayer, cardName, abilityIndex);
+
+    if (state.error) {
+        console.error('Error using ability:', state.error);
+        alert('Cannot use ability: ' + state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Pass for the rest of the round - requires choosing a new magic item
+ */
+async function passAction() {
+    if (!currentGameState) return;
+
+    // Show magic item selection dialog
+    const availableMagicItems = currentGameState.availableMagicItems || [];
+    if (availableMagicItems.length === 0) {
+        alert('No magic items available to swap!');
+        return;
+    }
+
+    // For now, use a simple prompt. TODO: Make a nicer UI for this
+    const options = availableMagicItems.map((item, i) => `${i + 1}. ${item.name}`).join('\n');
+    const choice = prompt(
+        `Choose a new magic item (you'll return your current one):\n\n${options}\n\nEnter number (1-${availableMagicItems.length}):`
+    );
+
+    if (choice === null) return; // Cancelled
+
+    const index = parseInt(choice) - 1;
+    if (isNaN(index) || index < 0 || index >= availableMagicItems.length) {
+        alert('Invalid selection');
+        return;
+    }
+
+    const newMagicItem = availableMagicItems[index].name;
+    const state = await apiActionPass(currentViewingPlayer, newMagicItem);
+
+    if (state.error) {
+        console.error('Error passing:', state.error);
+        alert('Cannot pass: ' + state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Play a card from hand
+ */
+async function playCard(cardName) {
+    if (!currentGameState) return;
+
+    const state = await apiActionPlayCard(currentViewingPlayer, cardName);
+
+    if (state.error) {
+        console.error('Error playing card:', state.error);
+        alert('Cannot play card: ' + state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Buy a Place of Power
+ */
+async function buyPlaceOfPower(popName) {
+    if (!currentGameState) return;
+
+    const state = await apiActionBuyPlaceOfPower(currentViewingPlayer, popName);
+
+    if (state.error) {
+        console.error('Error buying Place of Power:', state.error);
+        alert('Cannot buy: ' + state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Buy a Monument
+ */
+async function buyMonument(monumentName = null, fromDeck = false) {
+    if (!currentGameState) return;
+
+    const state = await apiActionBuyMonument(currentViewingPlayer, monumentName, fromDeck);
+
+    if (state.error) {
+        console.error('Error buying monument:', state.error);
+        alert('Cannot buy monument: ' + state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+/**
+ * Discard a card for resources
+ */
+async function discardCardForResources(cardName, gainGold) {
+    if (!currentGameState) return;
+
+    let state;
+    if (gainGold) {
+        state = await apiActionDiscardCard(currentViewingPlayer, cardName, true);
+    } else {
+        // For simplicity, default to 2 of first available type
+        // TODO: Add UI to choose resource types
+        state = await apiActionDiscardCard(currentViewingPlayer, cardName, false, { red: 2 });
+    }
+
+    if (state.error) {
+        console.error('Error discarding card:', state.error);
+        return;
+    }
+
+    currentGameState = state;
+    renderGame(state, currentViewingPlayer);
+}
+
+// ============================================================
 // Main Render Function (Updated)
 // ============================================================
+
+/**
+ * Render playable cards in hand with play buttons
+ */
+function renderHandCards(hand, isMyTurn) {
+    if (!hand) return '';
+
+    return hand.map(card => {
+        const typeClass = card.cardType;
+        const costStr = card.effects?.cost ?
+            Object.entries(card.effects.cost).map(([t, c]) => `${c}${t[0].toUpperCase()}`).join('') :
+            'Free';
+
+        return `
+            <div class="card ${typeClass} hand-card">
+                <div class="card-name">${card.name}</div>
+                <div class="card-cost">${costStr}</div>
+                ${isMyTurn ? `
+                    <div class="hand-card-actions">
+                        <button class="play-btn" onclick="event.stopPropagation(); playCard('${card.name}')">Play</button>
+                        <button class="discard-btn" onclick="event.stopPropagation(); discardCardForResources('${card.name}', true)">Discard→1G</button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Render clickable Places of Power for purchase
+ */
+function renderBuyablePlacesOfPower(placesOfPower, isMyTurn) {
+    return placesOfPower.map(card => {
+        const costStr = card.effects?.cost ?
+            Object.entries(card.effects.cost).map(([t, c]) => `${c}${t[0].toUpperCase()}`).join('') :
+            'Free';
+
+        return `
+            <div class="card place_of_power ${isMyTurn ? 'buyable' : ''}">
+                <div class="card-name">${card.name}</div>
+                <div class="card-cost">${costStr}</div>
+                ${isMyTurn ? `<button class="buy-btn" onclick="event.stopPropagation(); buyPlaceOfPower('${card.name}')">Buy</button>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Render clickable Monuments for purchase
+ */
+function renderBuyableMonuments(monuments, isMyTurn) {
+    return monuments.map(card => {
+        return `
+            <div class="card monument ${isMyTurn ? 'buyable' : ''}">
+                <div class="card-name">${card.name}</div>
+                <div class="card-cost">4G</div>
+                ${isMyTurn ? `<button class="buy-btn" onclick="event.stopPropagation(); buyMonument('${card.name}')">Buy</button>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Render the game over screen
+ */
+function renderGameOver(gameState, viewingPlayerId) {
+    const victoryResult = gameState.victoryResult;
+    if (!victoryResult) return;
+
+    const players = gameState.players;
+
+    // Sort players by points (descending), then by resource value (descending)
+    const sortedPlayers = [...players].sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        return b.resourceValue - a.resourceValue;
+    });
+
+    let resultText;
+    if (victoryResult.isTie) {
+        const tiedNames = victoryResult.tiedPlayers.map(pid => `Player ${pid + 1}`).join(' and ');
+        resultText = `Game ends in a tie between ${tiedNames}!`;
+    } else if (victoryResult.winner !== null) {
+        resultText = `Player ${victoryResult.winner + 1} wins!`;
+    } else {
+        resultText = 'Game Over';
+    }
+
+    // Create standings table
+    const standingsHtml = sortedPlayers.map((p, i) => {
+        const isWinner = victoryResult.winner === p.playerId;
+        const rowClass = isWinner ? 'winner' : '';
+        return `<tr class="${rowClass}">
+            <td>${i + 1}</td>
+            <td>Player ${p.playerId + 1}${p.playerId === viewingPlayerId ? ' (You)' : ''}</td>
+            <td>${p.points}</td>
+            <td>${p.resourceValue}</td>
+        </tr>`;
+    }).join('');
+
+    // Show game over overlay
+    const draftSection = document.getElementById('draft-section');
+    draftSection.classList.remove('hidden');
+    draftSection.innerHTML = `
+        <h2>Game Over</h2>
+        <p class="game-result">${resultText}</p>
+        <table class="standings">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Player</th>
+                    <th>Points</th>
+                    <th>Resources</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${standingsHtml}
+            </tbody>
+        </table>
+        <button onclick="newGameFromUI()" class="new-game-btn">New Game</button>
+    `;
+
+    // Hide other sections
+    document.getElementById('income-section').classList.add('hidden');
+    document.getElementById('action-section').classList.add('hidden');
+}
 
 /**
  * Render the game board for a specific player's view
@@ -930,17 +1438,30 @@ function renderGame(gameState, viewingPlayerId) {
     // Update polling state to avoid duplicate renders
     lastStateJson = JSON.stringify(gameState);
 
+    // Handle game over
+    if (gameState.phase === 'game_over') {
+        renderGameOver(gameState, viewingPlayerId);
+        return;
+    }
+
     // Phases where we hide player details (not magic item selection - mages are revealed then)
     const hidePlayerDetails = gameState.phase === GamePhase.SETUP ||
         gameState.phase === GamePhase.DRAFTING_ROUND_1 ||
         gameState.phase === GamePhase.DRAFTING_ROUND_2 ||
         gameState.phase === GamePhase.MAGE_SELECTION;
 
+    // Check if it's the player's turn during action phase
+    const isActionPhase = gameState.phase === GamePhase.PLAYING && gameState.actionState;
+    const isMyTurn = isActionPhase && gameState.actionState.currentPlayer === viewingPlayerId;
+
     // Render draft section if in draft phase
     renderDraftSection(gameState, viewingPlayerId);
 
     // Render income section if in income phase
     renderIncomeSection(gameState, viewingPlayerId);
+
+    // Render action section if in playing phase
+    renderActionSection(gameState, viewingPlayerId);
 
     // Update the View As dropdown to match player count
     updateViewAsDropdown(gameState.players.length);
@@ -959,21 +1480,40 @@ function renderGame(gameState, viewingPlayerId) {
     const opponentsContainer = document.getElementById('opponents-container');
     opponentsContainer.innerHTML = opponents.map((opp, i) => renderOpponentArea(opp, i)).join('');
 
-    // Render shared zones
-    document.getElementById('available-places').innerHTML =
-        visibleState.availablePlacesOfPower.map(card => renderCard(card)).join('');
-    document.getElementById('available-monuments').innerHTML =
-        visibleState.availableMonuments.map(card => renderCard(card)).join('');
+    // Render shared zones (with buy buttons if it's our turn)
+    if (isActionPhase) {
+        document.getElementById('available-places').innerHTML =
+            renderBuyablePlacesOfPower(visibleState.availablePlacesOfPower, isMyTurn);
+        document.getElementById('available-monuments').innerHTML =
+            renderBuyableMonuments(visibleState.availableMonuments, isMyTurn);
+    } else {
+        document.getElementById('available-places').innerHTML =
+            visibleState.availablePlacesOfPower.map(card => renderCard(card)).join('');
+        document.getElementById('available-monuments').innerHTML =
+            visibleState.availableMonuments.map(card => renderCard(card)).join('');
+    }
+
     document.querySelector('#monument-deck .deck-count').textContent = visibleState.monumentDeckCount;
+
+    // Add "buy from deck" button if it's action phase
+    const monumentDeck = document.getElementById('monument-deck');
+    if (isMyTurn && visibleState.monumentDeckCount > 0) {
+        monumentDeck.classList.add('buyable');
+        monumentDeck.onclick = () => buyMonument(null, true);
+    } else {
+        monumentDeck.classList.remove('buyable');
+        monumentDeck.onclick = null;
+    }
+
     document.getElementById('available-magic-items').innerHTML =
         renderFixedSlots(visibleState.availableMagicItems, ALL_MAGIC_ITEMS);
     document.getElementById('available-scrolls').innerHTML =
         renderFixedSlots(visibleState.availableScrolls, ALL_SCROLLS);
 
-    // Render player area
-    document.getElementById('player-label').textContent = `Player ${viewingPlayerId + 1} (You)`;
+    // Render player area (with abilities shown during action phase)
+    document.getElementById('player-label').textContent = `Player ${viewingPlayerId + 1} (You) - ${viewingPlayer.points || 0} VP`;
     document.getElementById('player-resources').innerHTML = renderPlayerResources(viewingPlayer.resources);
-    document.getElementById('player-controlled').innerHTML = renderControlledCards(viewingPlayer);
+    document.getElementById('player-controlled').innerHTML = renderControlledCards(viewingPlayer, isActionPhase, isMyTurn);
 
     // Update player deck count
     document.querySelector('#player-deck .deck-count').textContent = viewingPlayer.deckCount;
@@ -989,10 +1529,10 @@ function renderGame(gameState, viewingPlayerId) {
     // First player token for player
     document.getElementById('player-token-slot').innerHTML = renderFirstPlayerToken(viewingPlayer);
 
-    // Render player's hand (visible to them)
-    const handHtml = viewingPlayer.hand ?
-        viewingPlayer.hand.map(card => renderCard(card)).join('') :
-        '';
+    // Render player's hand (with play buttons if it's our turn)
+    const handHtml = isActionPhase ?
+        renderHandCards(viewingPlayer.hand, isMyTurn) :
+        (viewingPlayer.hand ? viewingPlayer.hand.map(card => renderCard(card)).join('') : '');
     document.querySelector('#player-hand .hand-cards').innerHTML = handHtml;
 
     // Update debug panels

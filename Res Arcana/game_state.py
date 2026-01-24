@@ -28,6 +28,7 @@ class GamePhase(Enum):
     # Gameplay phases
     INCOME = "income"                        # Collect income at start of round
     PLAYING = "playing"                      # Main action phase
+    GAME_OVER = "game_over"                  # Game has ended
 
 
 class CardType(Enum):
@@ -307,6 +308,9 @@ class GameState:
     available_magic_items: List[Card] = field(default_factory=list)
     available_scrolls: List[Card] = field(default_factory=list)
     monument_deck: List[Card] = field(default_factory=list)
+
+    # Victory state (set when game ends)
+    victory_result: Optional[Dict] = None
 
     def get_player(self, player_id: int) -> Optional[PlayerState]:
         for player in self.players:
