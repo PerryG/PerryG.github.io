@@ -923,3 +923,157 @@ def player_discard_card(game: GameState, player_id: int, card_name: str,
     # Move to next player
     advance_to_next_player(game)
     return True
+
+
+# ============================================================
+# Attack System
+# ============================================================
+
+def calculate_attack_payment(player: PlayerState, green_cost: int) -> Dict[str, int]:
+    """Calculate what a player must pay for an attack.
+
+    Returns a dict of resources that would be paid.
+    - Pay as much green as possible
+    - For each missing green, pay 2 other resources
+    - If not enough total, pay everything
+    """
+    available_green = player.resource_count(ResourceType.GREEN)
+    green_to_pay = min(available_green, green_cost)
+    missing_green = green_cost - green_to_pay
+
+    payment = {'green': green_to_pay}
+
+    # Calculate penalty for missing green (2 resources per missing green)
+    penalty_needed = missing_green * 2
+
+    # Collect non-green resources available
+    other_available = {}
+    for rt in [ResourceType.RED, ResourceType.BLUE, ResourceType.BLACK, ResourceType.GOLD]:
+        count = player.resource_count(rt)
+        if count > 0:
+            other_available[rt.value] = count
+
+    # Pay from other resources
+    penalty_paid = 0
+    for res_type, count in other_available.items():
+        to_pay = min(count, penalty_needed - penalty_paid)
+        if to_pay > 0:
+            payment[res_type] = to_pay
+            penalty_paid += to_pay
+        if penalty_paid >= penalty_needed:
+            break
+
+    return payment
+
+
+def get_total_resources(player: PlayerState) -> int:
+    """Get total resources a player has."""
+    total = 0
+    for rt in ResourceType:
+        total += player.resource_count(rt)
+    return total
+
+
+def apply_attack_payment(player: PlayerState, payment: Dict[str, int]) -> None:
+    """Apply the calculated attack payment, removing resources from player."""
+    for res_str, count in payment.items():
+        if count > 0:
+            rt = ResourceType(res_str)
+            player.remove_resource(rt, count)
+
+
+def can_pay_avoid_cost(player: PlayerState, avoid_cost: Dict) -> bool:
+    """Check if player can pay the avoid cost for an attack.
+
+    avoid_cost can be:
+    - Resource dict like {'black': 1}
+    - {'discard': True} - must have cards in hand
+    - {'destroy_artifact': True} - must have artifacts
+    """
+    if avoid_cost is None:
+        return False
+
+    if 'discard' in avoid_cost:
+        return len(player.hand) > 0
+
+    if 'destroy_artifact' in avoid_cost:
+        return len(player.artifacts) > 0
+
+    # Resource cost
+    for res_str, count in avoid_cost.items():
+        if res_str in ['red', 'blue', 'green', 'black', 'gold']:
+            rt = ResourceType(res_str)
+            if player.resource_count(rt) < count:
+                return False
+
+    return True
+
+
+def pay_avoid_cost(player: PlayerState, avoid_cost: Dict,
+                   discard_card_name: str = None,
+                   destroy_artifact_name: str = None) -> bool:
+    """Pay the avoid cost for an attack.
+
+    Returns True if successful.
+    """
+    if avoid_cost is None:
+        return False
+
+    if 'discard' in avoid_cost:
+        if discard_card_name:
+            card = next((c for c in player.hand if c.name == discard_card_name), None)
+            if card:
+                player.hand.remove(card)
+                player.discard.append(card)
+                return True
+        return False
+
+    if 'destroy_artifact' in avoid_cost:
+        if destroy_artifact_name:
+            from game_state import ControlledCard
+            artifact = next((a for a in player.artifacts if a.card.name == destroy_artifact_name), None)
+            if artifact:
+                player.artifacts.remove(artifact)
+                player.discard.append(artifact.card)
+                return True
+        return False
+
+    # Resource cost
+    for res_str, count in avoid_cost.items():
+        if res_str in ['red', 'blue', 'green', 'black', 'gold']:
+            rt = ResourceType(res_str)
+            if not player.remove_resource(rt, count):
+                return False
+
+    return True
+
+
+def get_attack_reactions(player: PlayerState, attacker_tags: set = None) -> list:
+    """Get available reaction abilities for defending against an attack.
+
+    Returns list of (controlled_card, ability) tuples.
+    """
+    reactions = []
+
+    for cc in player.all_controlled_cards():
+        if cc.tapped:
+            continue  # Tapped cards can't use abilities
+
+        if not cc.card.effects or not cc.card.effects.abilities:
+            continue
+
+        for ability in cc.card.effects.abilities:
+            if ability.trigger != 'attacked':
+                continue
+
+            # Check trigger filter (e.g., only react to dragon attacks)
+            if ability.trigger_filter:
+                if attacker_tags is None or ability.trigger_filter not in attacker_tags:
+                    continue
+
+            # Check if any effect is ignore_attack
+            has_ignore = any(e.effect_type == 'ignore_attack' for e in ability.effects)
+            if has_ignore:
+                reactions.append((cc, ability))
+
+    return reactions

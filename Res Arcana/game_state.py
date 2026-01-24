@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 
 class ResourceType(Enum):
@@ -9,6 +9,13 @@ class ResourceType(Enum):
     GREEN = "green"
     BLACK = "black"
     GOLD = "gold"
+
+
+class CardTag(Enum):
+    """Tags that can be on artifacts (can have multiple or none)."""
+    DRAGON = "dragon"
+    DEMON = "demon"
+    ANIMAL = "animal"
 
 
 class GamePhase(Enum):
@@ -38,6 +45,7 @@ class IncomeEffect:
 
     count: How many resources to gain
     types: Which resource types are allowed (e.g., ['green'], ['black', 'green'], etc.)
+    conditional: If True, income only happens if resources were left on card during collection
 
     Examples:
     - count=1, types=['green'] → gain 1 green (fixed)
@@ -47,16 +55,125 @@ class IncomeEffect:
     """
     count: int
     types: List[str]
+    conditional: bool = False  # True for Vault/Windup Man style income
+    add_to_card: bool = False  # True if income adds to card (Windup Man), False for player pool
+
+
+# ============================================================
+# Ability System
+# ============================================================
+
+@dataclass
+class AbilityCost:
+    """A single cost component for an ability.
+
+    Cost types and their expected fields:
+    - tap: Tap this card (no additional fields)
+    - tap_card: Tap another card. Fields: tag (optional CardTag filter)
+    - pay: Pay resources from player pool. Fields: resources (dict)
+    - remove_from_card: Remove resources from this card. Fields: resources (dict)
+    - destroy_self: Destroy this card (no additional fields)
+    - destroy_artifact: Destroy another artifact. Fields: must_be_different (bool)
+    - discard: Discard a card from hand (no additional fields)
+    """
+    cost_type: str
+    # Additional fields depending on cost_type
+    resources: Optional[Dict[str, int]] = None
+    tag: Optional[str] = None  # For tap_card filter
+    must_be_different: bool = True  # For destroy_artifact
+
+
+@dataclass
+class AbilityEffect:
+    """A single effect of an ability.
+
+    Effect types and their expected fields:
+    - gain: Gain resources to player pool. Fields: resources OR count+types (for choice)
+    - gain_per_opponent: Gain based on max resource among opponents. Fields: resources (what to gain), check_resource
+    - gain_per_opponent_count: Gain based on max card count. Fields: resources, check_tag
+    - gain_from_destroyed: Gain from destroyed card's cost. Fields: bonus
+    - gain_from_discarded: Gain from discarded card's cost.
+    - add_to_card: Add resources to this/another card. Fields: resources OR count+types, target
+    - add_paid_to_card: Add the paid resource to the card.
+    - take_from_card: Take all resources from another card. Fields: target
+    - attack: Attack opponents. Fields: green_cost, avoid_cost (optional dict or special string)
+    - draw: Draw cards. Fields: count
+    - draw_discard: Draw then discard. Fields: count, discard_count
+    - untap: Untap a card. Fields: target (self/other/demon/dragon/etc)
+    - convert: Convert resources to gold.
+    - exchange: Exchange resources (Prism style). Fields: target
+    - play_card: Play a card. Fields: source (hand/discard), discount, free, card_filter
+    - give_opponents: Give resources to opponents. Fields: resources
+    - reorder_deck: Look at top N cards. Fields: count, deck (self/monuments)
+    - ignore_attack: Ignore an attack (for reactions).
+    """
+    effect_type: str
+    # Common fields
+    resources: Optional[Dict[str, int]] = None
+    count: Optional[int] = None
+    types: Optional[List[str]] = None  # For choice effects
+    # Attack fields
+    green_cost: Optional[int] = None
+    avoid_cost: Optional[Dict] = None  # Can be resources, 'discard', 'destroy_artifact', etc.
+    # Target fields
+    target: Optional[str] = None  # 'self', 'other', 'dragon', 'demon', etc.
+    target_card: Optional[str] = None
+    # Play card fields
+    source: Optional[str] = None  # 'hand', 'discard'
+    discount: Optional[int] = None
+    discount_type: Optional[str] = None  # 'any' or 'non_gold'
+    free: bool = False
+    card_filter: Optional[str] = None  # 'dragon', 'demon', etc.
+    # Deck fields
+    deck: Optional[str] = None  # 'self', 'monuments'
+    # Draw/discard fields
+    discard_count: Optional[int] = None
+    # Gain per opponent fields
+    check_resource: Optional[str] = None  # Resource type to check on opponents
+    check_tag: Optional[str] = None  # Card tag to count on opponents
+    # Gain from destroyed/discarded fields
+    bonus: int = 0  # Bonus resources to add to card's cost
+
+
+@dataclass
+class Ability:
+    """An activated ability on a card.
+
+    For regular abilities: costs + effects
+    For reactions: trigger + costs + effects
+    """
+    costs: List[AbilityCost] = field(default_factory=list)
+    effects: List[AbilityEffect] = field(default_factory=list)
+    # For reactions
+    trigger: Optional[str] = None  # 'attacked', 'attacked_by_dragon', 'attacked_by_demon', 'artifact_destroyed'
+    trigger_filter: Optional[str] = None  # Additional filter for trigger
+
+
+@dataclass
+class PassiveEffect:
+    """A permanent passive effect on a card.
+
+    Effect types:
+    - cost_reduction: Reduce cost to play certain cards.
+      Fields: card_filter, amount, reduction_type ('any' or 'non_gold')
+    """
+    effect_type: str
+    card_filter: Optional[str] = None  # 'dragon', 'demon', etc.
+    amount: int = 0
+    reduction_type: str = 'non_gold'  # 'any' includes gold, 'non_gold' excludes gold
 
 
 @dataclass
 class CardEffects:
-    """All effects a card can have. Expandable for future abilities."""
+    """All effects a card can have."""
     income: Optional[IncomeEffect] = None
     # Cost to play (dict of resource_type -> count, e.g. {'red': 2, 'black': 1})
     # 'any' means any non-gold essence
     cost: Optional[Dict[str, int]] = None
-    # Future: tap_ability, reaction, victory_points, etc.
+    # Abilities (tap abilities, reactions)
+    abilities: List[Ability] = field(default_factory=list)
+    # Passive effects (cost reductions, etc.)
+    passives: List[PassiveEffect] = field(default_factory=list)
 
 
 @dataclass
@@ -64,6 +181,10 @@ class Card:
     name: str
     card_type: CardType
     effects: Optional[CardEffects] = None
+    # Tags for card classification (Dragon, Demon, Animal)
+    tags: Set[str] = field(default_factory=set)
+    # Victory points this card is worth
+    points: int = 0
 
 
 @dataclass
